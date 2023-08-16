@@ -260,7 +260,7 @@ void setup() {
       wifiSetUp();
   }
   else {
-      Serial.println("Not streaming, skipping WiFi Setup");
+      logAndPrint("Not streaming, skipping WiFi Setup");
   }
 
   /*********************** Setup sensors ************************/
@@ -700,6 +700,9 @@ void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times) {
     delay(statusLEDDelay);
     i++;
   }
+  analogWrite(LED_PIN_R, 0);
+  analogWrite(LED_PIN_G, 0);
+  analogWrite(LED_PIN_B, 0);
 }
 
 // A function that will both print messsages to serial and log them to
