@@ -1,36 +1,40 @@
-/************************ Adafruit IO Config *******************************/
+/*
+ * The deinitions that go with the LocalAir Software
+ */
 
-// visit io.adafruit.com if you need to create an account,
-// or if you need your Adafruit IO key.
-//#define IO_USERNAME "lifegarb"
-//#define IO_KEY "aio_OuwR53UO6ENQYoooRgWlQrGPTMkk"
+/*
+ * Below is the declaration of a string that will be converted into a dict
+ * of the wifi networks that we're able to access.
+ */
+String wifi_networks = "{"
+  "\"Juice4Jesus\" : \"J3w5forGingers\","
+  "\"Harp Controller\" : \"harpaccess\","
+  "\"LocalAir Project\" : \"BikesAreBetter\","
+  "\"Scooter Demo\" : \"BikesAreBetter\""
+"}";
 
-/******************************* WIFI **************************************/
-
-// the AdafruitIO_WiFi client will work with the following boards:
-//   - HUZZAH ESP8266 Breakout -> https://www.adafruit.com/products/2471
-//   - Feather HUZZAH ESP8266 -> https://www.adafruit.com/products/2821
-//   - Feather HUZZAH ESP32 -> https://www.adafruit.com/product/3405
-//   - Feather M0 WiFi -> https://www.adafruit.com/products/3010
-//   - Feather WICED -> https://www.adafruit.com/products/3056
-//   - Adafruit PyPortal -> https://www.adafruit.com/product/4116
-//   - Adafruit Metro M4 Express AirLift Lite ->
-//   https://www.adafruit.com/product/4000
-//   - Adafruit AirLift Breakout -> https://www.adafruit.com/product/4201
-//   - Adafruit AirLift Shield -> https://www.adafruit.com/product/4285
-//   - Adafruit AirLift FeatherWing -> https://www.adafruit.com/product/4264
+// Upload Server details
+// This uploads to Sam's hostgater server
+#define FTP_SERVER "sgunner.co.uk"
+#define FTP_USERNAME "localAir@sgunner.co.uk"
+#define FTP_PASSWORD "L0c4lA1rMunky!"
 
 //#define SECRET_SSID "LocalAir Project" // James's
 //#define SECRET_SSID "Scooter Demo" // Mine
-#define SECRET_SSID "Juice4Jesus" // Home
+//#define SECRET_SSID "Juice4Jesus" // Home
 //define SECRET_SSID "Harp Controller" // Office
 
 //#define SECRET_PASS "BikesAreBetter"
-#define SECRET_PASS "J3w5forGingers"
+//#define SECRET_PASS "J3w5forGingers"
 //define SECRET_PASS "harpaccess" // Office
 
 //#define SERVER_ADDRESS "10.42.0.1" // James
 #define SERVER_ADDRESS "10.0.69.1" // Mine
+
+/*
+ * System log file name:
+ */
+#define SYSTEM_LOG_FILE_NAME "LocalAir_system.log"
 
 // Configure the pins used for the ESP32 connection 
 #if defined(TEENSYDUINO)
@@ -46,40 +50,14 @@
 
 #define STREAM false // deciding weather to stream the data or not...
 
-/******************************* FONA **************************************/
+/* Pollution Sensors */
+#define PMSerial Serial5
 
-// the AdafruitIO_FONA client will work with the following boards:
-//   - Feather 32u4 FONA -> https://www.adafruit.com/product/3027
-
-// uncomment the following two lines for 32u4 FONA,
-// and comment out the AdafruitIO_WiFi client in the WIFI section
-// #include "AdafruitIO_FONA.h"
-// AdafruitIO_FONA io(IO_USERNAME, IO_KEY);
-
-/**************************** ETHERNET ************************************/
-
-// the AdafruitIO_Ethernet client will work with the following boards:
-//   - Ethernet FeatherWing -> https://www.adafruit.com/products/3201
-
-// uncomment the following two lines for ethernet,
-// and comment out the AdafruitIO_WiFi client in the WIFI section
-// #include "AdafruitIO_Ethernet.h"
-// AdafruitIO_Ethernet io(IO_USERNAME, IO_KEY);
+/* Debugging flags */
+#define CHECK_GPS_DATETIME true
+#define AUTO_POWER_OFF true
+#define INACTIVITY_TIMEOUT 5
+#define WIFI_ATTEMPTS 5
+#define LOG_FILE_NAME_PREFIX "LocalAirData_"
 
 /**************************** WiF Status Function ************************************/
-void printWifiStatus() {
-  // print the SSID of the network you're attached to:
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  // print your board's IP address:
-  IPAddress ip = WiFi.localIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
-
-  // print the received signal strength:
-  long rssi = WiFi.RSSI();
-  Serial.print("signal strength (RSSI):");
-  Serial.print(rssi);
-  Serial.println(" dBm");
-}
