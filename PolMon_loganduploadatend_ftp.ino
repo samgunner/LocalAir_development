@@ -203,7 +203,7 @@ void setup() {
     statusLED(165,42,42,false,10);
   }
   else {
-    statusLED(165,42,42,true,1);
+    statusLED(165,42,42,true,5);
   }
 
   // writing a start up message
@@ -345,7 +345,7 @@ void setup() {
   datetime_s.toCharArray(datetime_c,datetime_l);
 
   char to_log[50];
-  strcat(to_log, "GPS clock is set to: ");
+  strcpy(to_log, "GPS clock is set to: ");
   strcat(to_log, datetime_c);
   logAndPrint(to_log);
 
@@ -363,15 +363,15 @@ void setup() {
 
   // check to see if the file opened ok!
   if (myFile) {
-     char to_log[50];
-     strcat(to_log, "Created log file: ");
-     strcat(to_log, log_file_name_ca);
-     logAndPrint(to_log);
-     statusLED(75,75,125, true, 2);
+    char to_log[50];
+    strcpy(to_log, "Created log file: ");
+    strcat(to_log, log_file_name_ca);
+    logAndPrint(to_log);
+    statusLED(75,75,125, true, 2);
   }
   else {
     char to_log[50];
-    strcat(to_log, "Error - Count not create log file: ");
+    strcpy(to_log, "Error - Count not create log file: ");
     strcat(to_log, log_file_name_ca);
     statusLED(75,75,125, false, 10);
   }
@@ -708,14 +708,22 @@ void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times) {
 // A function that will both print messsages to serial and log them to
 // the system log file
 void logAndPrint(char *message) {
+    
     char millis_s[12];
-    itoa(millis(), millis_s, 10);
-    char to_log[50];
-    strcat(to_log, millis_s);
+    sprintf(millis_s, "%010d", millis());
+    
+    char to_log[60];
+    
+    strcpy(to_log, millis_s);
     strcat(to_log, " - ");
     strcat(to_log, message); 
-    sysLogFile.write(to_log);
+    
     Serial.println(to_log);
+
+    sysLogFile.write(to_log);
+    sysLogFile.write('\n');
+    sysLogFile.flush();
+    
 }
 
 // a function to set up the WiFi
@@ -724,21 +732,32 @@ int wifiSetUp() {
   // if we add more than 10 networks then we will need update the number in the below
   // declaration
   Dictionary &wifiNetworks = *(new Dictionary(10));
+  
   wifiNetworks.jload(wifi_networks);
-
+   
   WiFi.setPins(SPIWIFI_SS, SPIWIFI_ACK, ESP32_RESETN, ESP32_GPIO0, &SPIWIFI);
   // checking for WiFi Networks
   int numSsid = WiFi.scanNetworks();
   // check through the list of WiFi networks to see if any are in our known list
   for (int thisNet = 0; thisNet < numSsid; thisNet++) {
-    if (wifiNetworks(WiFi.SSID(thisNet))) {
+  
+    char ssid[20];
+    char pass[20];
+
+    String ssid_s = WiFi.SSID(thisNet);
+    strcpy(ssid, WiFi.SSID(thisNet));
+  
+    String pass_s = wifiNetworks[WiFi.SSID(thisNet)];
+    pass_s.toCharArray(pass, pass_s.length()+1);
+  
+    if (wifiNetworks(ssid)) {
       char to_log[60];
       char numSsid_s[6];
       itoa(numSsid, numSsid_s, 10);
-      strcat(to_log, numSsid);
-      strcat(to_log, " networks found, including \"");
-      strcat(to_log, thisNet);
-      strcat(to_log, "\" trying to connect.");
+      strcpy(to_log, numSsid_s);
+      strcat(to_log, " networks found, including ");
+      strcat(to_log, ssid);
+      strcat(to_log, " trying to connect.");
       logAndPrint(to_log);
 
       // try and connect to the matching network we have found
@@ -747,18 +766,20 @@ int wifiSetUp() {
       // disappears.
       int i = WIFI_ATTEMPTS;
       do {
+        
         i = i - 1;
         statusLED(255,255,255,false,1);
         // try to connect
-        char ssid[20] = {WiFi.SSID(thisNet)};
-        int pass_len = wifiNetworks[WiFi.SSID(thisNet)].length() + 1;
-        char pass[pass_len];
-        wifiNetworks[WiFi.SSID(thisNet)].toCharArray(pass, pass_len);
+        Serial.println(ssid);
+        Serial.println(pass);
+
+        /*
+         * THIS HAS STOPPED WORKING FOR SOME REASON!
+         */
         status = WiFi.begin(ssid, pass);
-        if ( i < 1 ) {
-          break;
-        }
-      } while (status != WL_CONNECTED);
+        Serial.println("tried");
+       
+      } while ((status != WL_CONNECTED)  && (i > 1));
       if (status == WL_CONNECTED) {
         logAndPrint("WiFi Connected");
         statusLED(255,255,255,true,3);
@@ -793,7 +814,7 @@ void printWifiStatus() {
   long rssi = WiFi.RSSI();
 
   char to_log[60];
-  strcat(to_log, "SSID :");
+  strcpy(to_log, "SSID :");
   strcat(to_log, WiFi.SSID());
   strcat(to_log, "; IP Address: ");
   strcat(to_log, ip);
@@ -808,7 +829,7 @@ void printWifiStatus() {
 // a function for uploading the data file to the server
 int uploadFile(String log_file_name) {
     char to_log[50];
-    strcat(to_log, "Attempting to upload ");
+    strcpy(to_log, "Attempting to upload ");
     strcat(to_log, log_file_name.c_str());
     logAndPrint(to_log);
           

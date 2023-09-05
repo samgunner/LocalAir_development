@@ -54,8 +54,8 @@ String wifi_networks = "{"
 #define PMSerial Serial5
 
 /* Debugging flags */
-#define CHECK_GPS_DATETIME true
-#define AUTO_POWER_OFF true
+#define CHECK_GPS_DATETIME false
+#define AUTO_POWER_OFF false
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
 #define LOG_FILE_NAME_PREFIX "LocalAirData_"
