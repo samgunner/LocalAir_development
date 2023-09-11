@@ -167,6 +167,12 @@ HttpClient client = HttpClient(wifi, serverAddress, port);
 //client.setHttpResponseTimeout(1);
 int status = WL_IDLE_STATUS;
 
+/*********************** Encryption **************************/
+#include <Crypto.h>
+#include <Speck.h>
+
+
+
 /*********************** SET FUNCTION ************************/
 
 void setup() {
