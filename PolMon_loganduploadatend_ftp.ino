@@ -30,6 +30,11 @@
 #define LED_PIN_G (4) // the Green LED pin
 #define LED_PIN_B (6) // the Blue LED pin
 
+
+// for some reason I need to put a decaration thingy for logAndPrint here... if I don't
+// then it complains that it doesn't exist...
+void logAndPrint(char *message, bool nl=true, bool ts=true);
+
 /************************ Accelerometer *******************************/
 
 #include <Wire.h>
@@ -88,16 +93,16 @@ Adafruit_GPS GPS(&GPSSerial);
 
 /*********************** FTP Include ************************/
 
-#include <FTPClient_Generic.h>
+//#include <FTPClient_Generic.h>
 
 // This uploads to Sam's hostgater server
-char ftp_server[] = FTP_SERVER;
+//char ftp_server[] = FTP_SERVER;
 
-char ftp_user[]   = FTP_USERNAME;
-char ftp_pass[]   = FTP_PASSWORD;
+//char ftp_user[]   = FTP_USERNAME;
+//char ftp_pass[]   = FTP_PASSWORD;
 
 // FTPClient_Generic(char* _serverAdress, char* _userName, char* _passWord, uint16_t _timeout = 10000);
-FTPClient_Generic ftp (ftp_server, ftp_user, ftp_pass, 60000);
+//FTPClient_Generic ftp (ftp_server, ftp_user, ftp_pass, 60000);
 
 /*********************** JSON Imports and setup ************************/
 
@@ -162,8 +167,8 @@ int last_seconds = 0;
 char serverAddress[] = SERVER_ADDRESS;  // server address
 int port = 5000;
 
-WiFiClient wifi;
-HttpClient client = HttpClient(wifi, serverAddress, port);
+WiFiClient client;
+//HttpClient client = HttpClient(wifi, serverAddress, port);
 //client.setHttpResponseTimeout(1);
 int status = WL_IDLE_STATUS;
 
@@ -554,23 +559,25 @@ void loop() {
   /*********************** POSTing ********************/
 
   if (STREAM) {
- 
+
+
+    // TODO this doesn't work at the moment
     Serial.print("POSTing -> ");
     String contentType = "application/json";
 
-    client.setHttpResponseTimeout(1000);
+    //client.setHttpResponseTimeout(1000);
 
     digitalWrite(4, HIGH);
-    client.post("/measurement_upload", contentType, deserialized_for_post);
+    //client.post("/measurement_upload", contentType, deserialized_for_post);
 
     // read the status code and body of the response
-    int statusCodePOST = client.responseStatusCode();
-    String responsePOST = client.responseBody();
+    //int statusCodePOST = client.responseStatusCode();
+    //String responsePOST = client.responseBody();
 
-    Serial.print("Status code: ");
-    Serial.println(statusCodePOST);
-    Serial.print("Response: ");
-    Serial.println(responsePOST);
+    //Serial.print("Status code: ");
+    //Serial.println(statusCodePOST);
+    //Serial.print("Response: ");
+    //Serial.println(responsePOST);
   }
 
     /*********************** CHECK TIME, THEN WIFI AND UPLOAD ********************/
@@ -713,21 +720,36 @@ void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times) {
 
 // A function that will both print messsages to serial and log them to
 // the system log file
-void logAndPrint(char *message) {
-    
-    char millis_s[12];
-    sprintf(millis_s, "%010d", millis());
-    
+// I've had to zoop it up a bit, so there are now two config perameters,
+// if nl is set to false then no new line is printed to the log file or the serial
+// if ts is set to false then no timestamp (or the " - ") will be appended to the front
+// the idea is that in situations where messages are recieved one character at a time
+// they can still go to the log/Serial, you just need to turn off the times stamp and new line 
+// for all except the begining and end respectively.
+// should work??
+void logAndPrint(char *message, bool nl=true, bool ts=true) {
+
     char to_log[60];
+
+    if (ts) {
+      char millis_s[12];
+      sprintf(millis_s, "%010d", millis());
+
+      strcpy(to_log, millis_s);
+
+      strcat(to_log, " - ");
+    }
     
-    strcpy(to_log, millis_s);
-    strcat(to_log, " - ");
     strcat(to_log, message); 
-    
-    Serial.println(to_log);
 
     sysLogFile.write(to_log);
-    sysLogFile.write('\n');
+    Serial.print(to_log);  
+
+    if (nl) {
+      Serial.println();
+      sysLogFile.write('\n');
+    }
+    
     sysLogFile.flush();
     
 }
@@ -834,50 +856,43 @@ void printWifiStatus() {
 
 // a function for uploading the data file to the server
 int uploadFile(String log_file_name) {
+    // we are now going to upload to James's server, using SSL of all things
+
+    char server[] = HTTPS_SERVER;
+    
     char to_log[50];
     strcpy(to_log, "Attempting to upload ");
     strcat(to_log, log_file_name.c_str());
     logAndPrint(to_log);
           
-    myFile = SD.open(log_file_name.c_str());
+    myFile = SD.open(log_file_name.c_str(), FILE_READ);
 
-    ftp.OpenConnection();
+    client.connectSSL(server, 443);
+    client.println("POST /data HTTP/1.1");
+    client.print("Host: ");
+    client.println(server);
+    client.print("Content-Length: ");
+    client.println(myFile.size());
+    client.println("Content-Type: text/plain");
+    client.println("");
 
-    ftp.InitFile(COMMAND_XFER_TYPE_BINARY);
-    ftp.NewFile(log_file_name.c_str());
-
-    int i = 0;
-
-    // are going to do the LEDs manually here
-    analogWrite(LED_PIN_R, 0);
-    analogWrite(LED_PIN_G, 0);
-    analogWrite(LED_PIN_B, 0);
-
-    // while through the file uploading it line by line...
     while (myFile.available()) {
-        byte data[256];
-        myFile.read(data, 256);
-
-        analogWrite(LED_PIN_R, 255);
-        analogWrite(LED_PIN_G, 255);
-
-        delay(50);
-        
-        ftp.Write(data);
-
-        analogWrite(LED_PIN_R, 0);
-        analogWrite(LED_PIN_G, 0);
-
-        delay(50);
-
-        i = i+1;
-        
+      char c = myFile.read();
+      //Serial.print(c);
+      client.print(c);
     }
-    logAndPrint("Closing FTP Server File");
-    ftp.CloseFile();
 
-    logAndPrint("Closing FTP Connection");
-    ftp.CloseConnection();
+    logAndPrint("", false);
+    while (client.available()) {
+      char c = client.read();
+      logAndPrint(c, false, false);
+    }
+    logAndPrint("", true, false);
+
+    if (!client.connected()) {
+      logAndPrint("disconnecting from server.");
+      client.stop();
+    }
 
     //TODO, it would be nice to have some way of checking the uplaod had actually worked....
     // for now we are just going  to flash happily...
