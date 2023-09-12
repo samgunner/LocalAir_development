@@ -589,7 +589,69 @@ void loop() {
 
           myFile.close();
 
-          uploadFile(log_file_name);
+          // we're going to try and upload all the files!... how exiting
+
+          // first we are going to count the numebr of files there are on the SD card.
+          // for the record, I am not worry about folders... hopefully there won't be any
+
+          int numFiles = 0;
+
+          File root = SD.open("/");
+
+          while (true) {
+            File log_file = root.openNextFile();
+            
+            if (! log_file ) {
+              break;
+            }
+
+            // and increment the counter
+            numFiles++;
+          }
+
+          analogWrite(LED_PIN_R, 0);
+          analogWrite(LED_PIN_G, 0);
+          analogWrite(LED_PIN_B, 0);            
+
+          int fileFlashDelay = 100;
+
+          // now we flash the LED that number of times.
+          for (int i = 0; i < numFiles; i++) {
+            analogWrite(LED_PIN_R, 123);
+            analogWrite(LED_PIN_G, 231);
+            analogWrite(LED_PIN_B, 78);
+
+            delay(fileFlashDelay);
+
+            analogWrite(LED_PIN_R, 0);
+            analogWrite(LED_PIN_G, 0);
+            analogWrite(LED_PIN_B, 0);
+
+            delay(fileFlashDelay);
+          }
+
+          char numFiles_s[6];
+          sprintf(numFiles_s, "%d", numFiles);
+          char to_log[12];
+          strcpy(to_log, numFiles_s);
+
+          strcat(to_log, " to be uploaded");
+
+          logAndPrint(to_log);
+
+          // we are now going to do the same thing again,  but this time upload the files as we go.
+          root = SD.open("/");
+
+          while (true) {
+            File log_file = root.openNextFile();
+            
+            if (! log_file ) {
+              break;
+            }
+
+            // and increment the counter
+            uploadFile(log_file);
+          }
 
           // we can't, as yet, tell if the file upload was a success, and so we are 
           // going to have to just shut down and hope for the best
@@ -855,17 +917,32 @@ void printWifiStatus() {
 }
 
 // a function for uploading the data file to the server
-int uploadFile(String log_file_name) {
+int uploadFile(File log_file) {
     // we are now going to upload to James's server, using SSL of all things
 
     char server[] = HTTPS_SERVER;
     
     char to_log[50];
     strcpy(to_log, "Attempting to upload ");
-    strcat(to_log, log_file_name.c_str());
+    strcat(to_log, log_file.name());
     logAndPrint(to_log);
           
-    myFile = SD.open(log_file_name.c_str(), FILE_READ);
+    myFile = log_file;
+
+    unsigned long fileSize = myFile.size();
+
+    int red = 255;
+    int green = 0;
+
+    analogWrite(LED_PIN_R, red);
+    analogWrite(LED_PIN_G, green);
+    analogWrite(LED_PIN_B, 0);
+
+    int ledStep = fileSize / 255;
+
+    if (ledStep == 0) {
+      ledStep = 1;
+    }
 
     client.connectSSL(server, 443);
     client.println("POST /data HTTP/1.1");
@@ -876,10 +953,26 @@ int uploadFile(String log_file_name) {
     client.println("Content-Type: text/plain");
     client.println("");
 
+    int i = ledStep;
+
     while (myFile.available()) {
       char c = myFile.read();
       //Serial.print(c);
       client.print(c);
+
+      i--;
+
+      if (i <= 0) {
+        analogWrite(LED_PIN_R, red--);
+        analogWrite(LED_PIN_G, green++);
+
+        i = ledStep;
+
+        if (red > 255) red = 255;
+        if (red < 0) red = 0;
+        if (green > 255) green = 255;
+        if (green < 0) green = 0;
+      }
     }
 
     logAndPrint("", false);
@@ -893,6 +986,10 @@ int uploadFile(String log_file_name) {
       logAndPrint("disconnecting from server.");
       client.stop();
     }
+
+    analogWrite(LED_PIN_R, 0);
+    analogWrite(LED_PIN_G, 0);
+    analogWrite(LED_PIN_B, 0);
 
     //TODO, it would be nice to have some way of checking the uplaod had actually worked....
     // for now we are just going  to flash happily...
