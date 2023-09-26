@@ -855,7 +855,7 @@ void logAndPrint(char *message, bool nl=true, bool ts=true) {
 
     char to_log[60];
 
-    if (nl) {
+    if (ts) {
       char millis_s[12];
       sprintf(millis_s, "%010d", millis());
 
@@ -869,7 +869,7 @@ void logAndPrint(char *message, bool nl=true, bool ts=true) {
     sysLogFile.write(to_log);
     Serial.print(to_log);  
 
-    if (ts) {
+    if (nl) {
       Serial.println();
       sysLogFile.write('\n');
     }
