@@ -605,6 +605,17 @@ void loop() {
               break;
             }
 
+            // don't upload the system log file stragiht away.
+            if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+              continue;
+            }
+
+            // check to see if it is the archive directory, and if so move on.
+            if (log_file.isDirectory()) {
+              continue;
+            }
+
+
             // and increment the counter
             numFiles++;
           }
@@ -649,8 +660,20 @@ void loop() {
               break;
             }
 
+            // don't upload the system log file stragiht away.
+            if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+              continue;
+            }
+
+            // check to see if it is the archive directory, and if so move on.
+            if (log_file.isDirectory()) {
+              continue;
+            }
+
             // and increment the counter
             uploadFile(log_file);
+
+            log_file.close();
           }
 
           // we can't, as yet, tell if the file upload was a success, and so we are 
@@ -822,23 +845,33 @@ int wifiSetUp() {
   // if we add more than 10 networks then we will need update the number in the below
   // declaration
   Dictionary &wifiNetworks = *(new Dictionary(10));
-  
+
   wifiNetworks.jload(wifi_networks);
-   
+
   WiFi.setPins(SPIWIFI_SS, SPIWIFI_ACK, ESP32_RESETN, ESP32_GPIO0, &SPIWIFI);
+
   // checking for WiFi Networks
   int numSsid = WiFi.scanNetworks();
+  
   // check through the list of WiFi networks to see if any are in our known list
   for (int thisNet = 0; thisNet < numSsid; thisNet++) {
   
-    char ssid[20];
-    char pass[20];
+    //char ssid[20];
+    //char pass[20];
 
-    String ssid_s = WiFi.SSID(thisNet);
-    strcpy(ssid, WiFi.SSID(thisNet));
+    char ssid[] = "Harp Controller";
+    char pass[] = "harpaccess";
+
+    //String ssid_s = WiFi.SSID(thisNet);
+    //ssid_s.toCharArray(ssid, ssid_s.length()+1);
+    //strcpy(ssid, WiFi.SSID(thisNet));
+
+    Serial.println(ssid);
   
-    String pass_s = wifiNetworks[WiFi.SSID(thisNet)];
-    pass_s.toCharArray(pass, pass_s.length()+1);
+    //String pass_s = wifiNetworks[WiFi.SSID(thisNet)];
+    //pass_s.toCharArray(pass, pass_s.length()+1);
+
+    Serial.println(pass);
   
     if (wifiNetworks(ssid)) {
       char to_log[60];
@@ -855,21 +888,17 @@ int wifiSetUp() {
       // otherwise we might get stuck in this loop forever if the wifi networks 
       // disappears.
       int i = WIFI_ATTEMPTS;
-      do {
+      while ((status != WL_CONNECTED)  && (i > 1)) {
         
         i = i - 1;
         statusLED(255,255,255,false,1);
-        // try to connect
-        Serial.println(ssid);
-        Serial.println(pass);
-
-        /*
-         * THIS HAS STOPPED WORKING FOR SOME REASON!
-         */
+        Serial.println("about to try");
         status = WiFi.begin(ssid, pass);
         Serial.println("tried");
+        Serial.flush();
        
-      } while ((status != WL_CONNECTED)  && (i > 1));
+      }
+      
       if (status == WL_CONNECTED) {
         logAndPrint("WiFi Connected");
         statusLED(255,255,255,true,3);
@@ -901,19 +930,42 @@ void printWifiStatus() {
   // print the SSID of the network you're attached to:
 
   IPAddress ip = WiFi.localIP();
-  long rssi = WiFi.RSSI();
+  String ip_s = IpAddress2String(ip);
+  // Length (with one extra character for the null terminator)
+  int ip_sl = ip_s.length() + 1;
+
+  // Prepare the character array (the buffer) 
+  char ip_ca[ip_sl];
+
+  // Copy it over 
+  ip_s.toCharArray(ip_ca, ip_sl);
+
+  long rssi_l = WiFi.RSSI();
+  char rssi_ca[16];
+
+  ltoa(rssi_l, rssi_ca, 10);
 
   char to_log[60];
   strcpy(to_log, "SSID :");
   strcat(to_log, WiFi.SSID());
   strcat(to_log, "; IP Address: ");
-  strcat(to_log, ip);
+  strcat(to_log, ip_ca);
   strcat(to_log, "; RSSI: ");
-  strcat(to_log, rssi);
+  strcat(to_log, rssi_ca);
   strcat(to_log, " dBm");
   //String message = "SSID: " + WiFi.SSID() + "; IP Address: " + ip + "; RSSI: " + rssi + " dBm";
 
   logAndPrint(to_log);
+}
+
+
+// a function to convert the IP address to a char[]
+String IpAddress2String(const IPAddress& ipAddress)
+{
+    return String(ipAddress[0]) + String(".") +
+           String(ipAddress[1]) + String(".") +
+           String(ipAddress[2]) + String(".") +
+           String(ipAddress[3]);
 }
 
 // a function for uploading the data file to the server
@@ -975,17 +1027,14 @@ int uploadFile(File log_file) {
       }
     }
 
-    logAndPrint("", false);
     while (client.available()) {
       char c = client.read();
-      logAndPrint(c, false, false);
     }
-    logAndPrint("", true, false);
 
-    if (!client.connected()) {
-      logAndPrint("disconnecting from server.");
-      client.stop();
-    }
+    client.stop();
+    
+
+    logAndPrint("Upload finished, disconnecting from server.");
 
     analogWrite(LED_PIN_R, 0);
     analogWrite(LED_PIN_G, 0);
@@ -995,8 +1044,6 @@ int uploadFile(File log_file) {
     // for now we are just going  to flash happily...
 
     statusLED(255,0,255, true, 3);
-
-    myFile.close();
 }
 
 
