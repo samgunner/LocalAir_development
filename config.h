@@ -10,7 +10,8 @@ String wifi_networks = "{"
   "\"Juice4Jesus\" : \"J3w5forGingers\","
   "\"Harp Controller\" : \"harpaccess\","
   "\"LocalAir Project\" : \"BikesAreBetter\","
-  "\"Scooter Demo\" : \"BikesAreBetter\""
+  "\"Scooter Demo\" : \"BikesAreBetter\","
+  "\"Fire Flower\" : \"b57f23aa6047\""
 "}";
 
 // Upload Server details
