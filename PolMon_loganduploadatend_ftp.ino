@@ -910,7 +910,7 @@ int wifiSetUp() {
       strcat(to_log, " networks found, including ");
       strcat(to_log, ssid);
       strcat(to_log, " trying to connect.");
-      logAndPrint(to_log);
+      //logAndPrint(to_log);
 
       Serial.println("test");
 
