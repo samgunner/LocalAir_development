@@ -605,6 +605,17 @@ void loop() {
               break;
             }
 
+
+            // don't upload the system log file stragiht away.
+            if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+              continue;
+            }
+
+            // check to see if it is the archive directory, and if so move on.
+            if (log_file.isDirectory()) {
+              continue;
+            }
+
             // and increment the counter
             numFiles++;
           }
@@ -644,13 +655,64 @@ void loop() {
 
           while (true) {
             File log_file = root.openNextFile();
-            
+
             if (! log_file ) {
               break;
             }
 
-            // and increment the counter
+            // don't upload the system log file stragiht away.
+            if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+              continue;
+            }
+
+            // check to see if it is the archive directory, and if so move on.
+            if (log_file.isDirectory()) {
+              continue;
+            }
+
+            // upload this log_file
             uploadFile(log_file);
+
+            // and since we don't yet have a good way of checking that the upload
+            // has worked we are going instead to try and copy to an archive folder 
+            // on the SD card.
+            Serial.print('a');
+            if (copyFile(log_file) == 0) {
+              //  this means the copy worked and so we can delete the file
+              char log_file_name[] = {log_file.name()};
+              Serial.print('b');
+              
+              log_file.close();
+              Serial.print('c');
+              
+              SD.remove(log_file_name);
+              Serial.print('d');
+              if (SD.exists(log_file_name)) {
+                char to_log[60];
+                Serial.print('e');
+                strcpy(to_log, "Warning - could not delete ");
+                strcat(to_log, log_file_name);
+                logAndPrint(to_log);
+                Serial.print('f');
+              }
+              else {
+                char to_log[60];
+                strcpy(to_log, "Successfully deleted ");
+                strcat(to_log, log_file_name);
+                logAndPrint(to_log);
+              }
+            }
+            else {
+
+              char log_file_name[] = {log_file.name()};
+              
+              log_file.close();
+              
+              char to_log[60];
+              strcpy(to_log, "Warning - could not copy ");
+              strcat(to_log, log_file_name);
+              logAndPrint(to_log);
+            }
           }
 
           // we can't, as yet, tell if the file upload was a success, and so we are 
@@ -850,26 +912,20 @@ int wifiSetUp() {
       strcat(to_log, " trying to connect.");
       logAndPrint(to_log);
 
+      Serial.println("test");
+
       // try and connect to the matching network we have found
       // we are going to stop after a given number of attempts,
       // otherwise we might get stuck in this loop forever if the wifi networks 
       // disappears.
       int i = WIFI_ATTEMPTS;
       do {
-        
         i = i - 1;
         statusLED(255,255,255,false,1);
         // try to connect
-        Serial.println(ssid);
-        Serial.println(pass);
-
-        /*
-         * THIS HAS STOPPED WORKING FOR SOME REASON!
-         */
-        status = WiFi.begin(ssid, pass);
-        Serial.println("tried");
-       
+        status = WiFi.begin(ssid, pass);       
       } while ((status != WL_CONNECTED)  && (i > 1));
+      
       if (status == WL_CONNECTED) {
         logAndPrint("WiFi Connected");
         statusLED(255,255,255,true,3);
@@ -899,21 +955,42 @@ void powerOff() {
 /* A function for generating a loging the WiFi status information */
 void printWifiStatus() {
   // print the SSID of the network you're attached to:
-
   IPAddress ip = WiFi.localIP();
-  long rssi = WiFi.RSSI();
+  String ip_s = IpAddress2String(ip);
 
+  // Length (with one extra character for the null terminator)
+  int ip_sl = ip_s.length() + 1; 
+
+  // Prepare the character array (the buffer) 
+  char ip_ca[ip_sl];
+
+  // Copy it over 
+  ip_s.toCharArray(ip_ca, ip_sl);
+  
+  long rssi_l = WiFi.RSSI();
+  char rssi_ca[16];
+
+  ltoa(rssi_l, rssi_ca, 10);
+  
   char to_log[60];
   strcpy(to_log, "SSID :");
   strcat(to_log, WiFi.SSID());
   strcat(to_log, "; IP Address: ");
-  strcat(to_log, ip);
+  strcat(to_log, ip_ca);
   strcat(to_log, "; RSSI: ");
-  strcat(to_log, rssi);
+  strcat(to_log, rssi_ca);
   strcat(to_log, " dBm");
-  //String message = "SSID: " + WiFi.SSID() + "; IP Address: " + ip + "; RSSI: " + rssi + " dBm";
 
   logAndPrint(to_log);
+}
+
+// a function to convert the IP address to a char[]
+String IpAddress2String(const IPAddress& ipAddress)
+{
+    return String(ipAddress[0]) + String(".") +
+           String(ipAddress[1]) + String(".") +
+           String(ipAddress[2]) + String(".") +
+           String(ipAddress[3]);
 }
 
 // a function for uploading the data file to the server
@@ -975,18 +1052,16 @@ int uploadFile(File log_file) {
       }
     }
 
-    logAndPrint("", false);
+    //logAndPrint("", false);
     while (client.available()) {
       char c = client.read();
-      logAndPrint(c, false, false);
+      //Serial.write(c);
+      //logAndPrint(c, false, false);
     }
-    logAndPrint("", true, false);
+    //logAndPrint("", true, false);
 
-    if (!client.connected()) {
-      logAndPrint("disconnecting from server.");
-      client.stop();
-    }
-
+    logAndPrint("Upload finished, disconnecting from server.");
+    
     analogWrite(LED_PIN_R, 0);
     analogWrite(LED_PIN_G, 0);
     analogWrite(LED_PIN_B, 0);
@@ -995,10 +1070,161 @@ int uploadFile(File log_file) {
     // for now we are just going  to flash happily...
 
     statusLED(255,0,255, true, 3);
-
-    myFile.close();
 }
 
+// rather than deleting a file after up load we are going to move the file
+// into an archive folder
+int copyFile(File log_file) {
+  // check to see if the archive dir exisits.
+  if (!SD.exists(ARCHIVE_FOLDER)) {
+    SD.mkdir(ARCHIVE_FOLDER);
+  }
+  // first we are going to create the archive file in the archive dir
+  char archiveFileName[30];
+
+  Serial.println('1');
+  strcpy(archiveFileName, ARCHIVE_FOLDER);
+  strcat(archiveFileName, "/");
+  strcat(archiveFileName, log_file.name());
+
+  Serial.println(archiveFileName);
+
+  // check to see if this archive file already exists,
+  while (SD.exists(archiveFileName)) {
+    Serial.println("same 1");
+    char to_log[60];
+    strcpy(to_log, "Warning - ");
+    strcat(to_log, archiveFileName);
+    strcat(to_log, " already exisits, trying different name.");
+    
+    logAndPrint(to_log);
+    Serial.println("same 2");
+
+    char rand_s[10];
+    Serial.println("same 3");
+    itoa(random(999), rand_s, 10);
+
+    Serial.println("same 4");
+    strcpy(archiveFileName, ARCHIVE_FOLDER);
+    strcat(archiveFileName, "/id");
+    strcat(archiveFileName, rand_s);
+    strcat(archiveFileName, log_file.name());
+    Serial.println("same 4");
+    Serial.println(archiveFileName);
+  }
+
+  Serial.println('2');
+  File archiveFile; 
+  String archiveFileName_s(archiveFileName);
+  archiveFile = SD.open(archiveFileName_s.c_str(), FILE_WRITE);
+
+  if (archiveFile) {
+    logAndPrint("archive file opened");
+  }
+  else {
+    logAndPrint("Warning - archive file did not open");
+  }
+
+  Serial.println('3');
+  // more the begining of the original file
+  log_file.seek(0);
+
+  Serial.println('4');
+
+  // we are going to do the same LED fading, but from blue to green
+  unsigned long fileSize = log_file.size();
+
+  int blue = 255;
+  int green = 0;
+
+  analogWrite(LED_PIN_R, 0);
+  analogWrite(LED_PIN_G, green);
+  analogWrite(LED_PIN_B, blue);
+
+  int ledStep = fileSize / 255;
+
+  if (ledStep == 0) {
+    ledStep = 1;
+  }
+
+  int i = ledStep;
+
+  while (log_file.available()) {
+    // this is where we actually copy acoss.
+    archiveFile.write(log_file.read());
+
+    i--;
+
+    if (i <= 0) {
+      analogWrite(LED_PIN_B, blue--);
+      analogWrite(LED_PIN_G, green++);
+      i = ledStep;
+
+      if (blue > 255) blue = 255;
+      if (blue < 0) blue = 0;
+      if (green > 255) green = 255;
+      if (green < 0) green = 0;
+    }
+  }
+
+  archiveFile.flush();
+
+  Serial.println('5');
+  // check to see if the file was copied across being seeing the input and outfile
+  // are the same size
+  if (log_file.size() == archiveFile.size()) {
+    char to_log[60];
+    Serial.println('6');
+
+    strcpy(to_log, log_file.name());
+    strcat(to_log, " successfully copied to ");
+    strcat(to_log, ARCHIVE_FOLDER);
+    strcat(to_log, "/");
+    strcat(to_log, archiveFile.name());
+    Serial.println("6a");
+    logAndPrint(to_log);
+    Serial.println("7");
+    
+    archiveFile.close();
+    Serial.println("8");
+    return 0; 
+  }
+  else {
+    char to_log[100];
+
+    Serial.println('8');
+    char log_file_size_s[10];
+    char archiveFile_size_s[10];
+    itoa(log_file.size(), log_file_size_s, 10);
+    itoa(archiveFile.size(), archiveFile_size_s, 10);
+
+    Serial.println('9');
+    strcpy(to_log, "Warning - ");
+    Serial.println("91");
+    strcat(to_log, log_file.name());
+    Serial.println("92");
+    strcat(to_log, " and ");
+    Serial.println("93");
+    Serial.println(to_log);
+    strcat(to_log, archiveFile.name());
+    Serial.println(to_log);
+    Serial.println("94");
+    strcat(to_log, " are not the same size. ");
+    Serial.println("95");
+    strcat(to_log, log_file_size_s);
+    Serial.println("96");
+    strcat(to_log, " vs ");
+    Serial.println("97");
+    strcat(to_log, archiveFile_size_s);
+
+    Serial.println("10");
+    logAndPrint(to_log);
+
+    archiveFile.close();
+    
+    return 1; 
+  }
+}
 
 
 // a function for making the logfile name from the GPS derived time.

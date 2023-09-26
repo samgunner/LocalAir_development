@@ -35,7 +35,8 @@ String wifi_networks = "{"
 /*
  * System log file name:
  */
-#define SYSTEM_LOG_FILE_NAME "LocalAir_system.log"
+#define SYSTEM_LOG_FILE_NAME "LocalAirSystem.log"
+#define ARCHIVE_FOLDER "archive"
 
 // Configure the pins used for the ESP32 connection 
 #if defined(TEENSYDUINO)
@@ -59,6 +60,7 @@ String wifi_networks = "{"
 #define AUTO_POWER_OFF false
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
-#define LOG_FILE_NAME_PREFIX "LocalAirData_"
+//#define LOG_FILE_NAME_PREFIX "LocalAirData_"
+#define LOG_FILE_NAME_PREFIX "LAD_"
 
 /**************************** WiF Status Function ************************************/
