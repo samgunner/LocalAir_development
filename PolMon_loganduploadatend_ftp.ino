@@ -176,7 +176,7 @@ int status = WL_IDLE_STATUS;
 #include <Crypto.h>
 #include <Speck.h>
 
-
+Speck speck;
 
 /*********************** SET FUNCTION ************************/
 
@@ -542,7 +542,7 @@ void loop() {
   /*********************** Printing to Serial ********************/
 
   String deserialized_for_post;
-  char deserialized[1024];
+  char deserialized[960];
   serializeJson(root, deserialized);
   serializeJson(root, deserialized_for_post);
 
@@ -551,10 +551,45 @@ void loop() {
   Serial.println();
 
   /*********************** Printing to File ********************/
+  if (ENCRYPT) {
+    // a buffer for the plain text block
+    byte bytePlanebuffer[16];
+    
+    // two duffers for the encrypted data
+    byte encryptedText[960];
+    byte encryptedbuffer[16];
+
+    int specKeySize = SPECKKEYSIZE;
+
+    // we now run through the line, encrupting it one 16 byte block at a time.
+    unsigned int i;
+    for (i=0; i<60; i++) {
+      memcpy(&bytePlanebuffer, &deserialized[i*16], 16);
+ 
+      speckEncrypt(&speck, specKeySize, encryptedbuffer, bytePlanebuffer);
+
+      memcpy(&encryptedText[i*16], &encryptedbuffer, 16);
+    }
+    // I've decided that I am going to save the file in ascii encoded hex, 
+    // which of course doubles its size... but that's ok
+    for(i=0; i<sizeof(encryptedText); i++){
+       char hexChar[2];
+       // cast the byte into hex
+       sprintf(hexChar, "%02X", encryptedText[i]);
+       // and write it to the file
+       myFile.write(hexChar);
+    }
+    // write a new line and flush the buffer
+    myFile.write("\n");
+    myFile.flush();  
+  }
+  else {
+    // if we are not encrypting then just save to the file
+    myFile.write(deserialized);
+    myFile.write("\n");
+    myFile.flush();  
+  }
   
-  myFile.write(deserialized);
-  myFile.write("\n");
-  myFile.flush();
  
   /*********************** POSTing ********************/
 
@@ -1344,4 +1379,13 @@ String getDateTime() {
     datetime = datetime + "Z";
 
     return datetime;
+}
+
+void speckEncrypt(BlockCipher *cipher, size_t keySize, byte* encOutput, byte* encInput)
+{
+  Serial.print("Encryption, with keysize: ");
+  Serial.println(keySize);
+  cipher->setKey(specKey, keySize);
+  cipher->encryptBlock(encOutput, encInput);
+  return;
 }
