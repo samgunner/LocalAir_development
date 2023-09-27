@@ -387,6 +387,10 @@ void setup() {
     statusLED(75,75,125, false, 10);
   }
 
+  if (ENCRYPT) {
+    logAndPrint("ENCRYPT flag is set, log file will be encrypted");
+  }
+
 }
 
 void loop() {
@@ -500,9 +504,9 @@ void loop() {
     // Compute heat index in Celsius (isFahreheit = false)
     float hic = dht.computeHeatIndex(t, h, false);
     
-    json_dht["humidity"] = h;
-    json_dht["temp"] = t;
-    json_dht["heat_index"] = hic;
+    json_dht["humidity"] = round2(h);
+    json_dht["temp"] = round2(t);
+    json_dht["heat_index"] = round2(hic);
   }
   
   /*********************** Get and store MultiGas Data ********************/
@@ -536,13 +540,16 @@ void loop() {
   // we are just going to save the fft data into an array
   for (fft_count=0; fft_count<40; fft_count++) {
     fft_val = lastFFT[fft_count];
-    json_fft.add(fft_val*1000);
+    json_fft.add(round2(fft_val*1000));
   }
 
   /*********************** Printing to Serial ********************/
 
   String deserialized_for_post;
   char deserialized[960];
+
+  
+  
   serializeJson(root, deserialized);
   serializeJson(root, deserialized_for_post);
 
@@ -708,11 +715,9 @@ void loop() {
             // on the SD card.
             if (copyFile(log_file) == 0) {
               //  this means the copy worked and so we can delete the file
-              Serial.println("here 1");
               char log_file_name[20];
               strcpy(log_file_name, log_file.name());
-              Serial.println(log_file_name);
-
+              
               // close and delete the log file
               log_file.close();
               SD.remove(log_file_name);
@@ -1381,11 +1386,16 @@ String getDateTime() {
     return datetime;
 }
 
+// the function that encrypts a block of text
 void speckEncrypt(BlockCipher *cipher, size_t keySize, byte* encOutput, byte* encInput)
 {
-  Serial.print("Encryption, with keysize: ");
-  Serial.println(keySize);
   cipher->setKey(specKey, keySize);
   cipher->encryptBlock(encOutput, encInput);
   return;
+}
+
+// rounds a number to 2 decimal places
+// example: round(3.14159) -> 3.14
+double round2(double value) {
+   return (int)(value * 100 + 0.5) / 100.0;
 }
