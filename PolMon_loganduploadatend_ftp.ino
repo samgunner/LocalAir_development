@@ -176,7 +176,7 @@ int status = WL_IDLE_STATUS;
 #include <Crypto.h>
 #include <Speck.h>
 
-
+Speck speck;
 
 /*********************** SET FUNCTION ************************/
 
@@ -202,10 +202,10 @@ void setup() {
       break;
     }
     Serial.println("initialization failed!");
-    statusLED(0, 0, 255, false, 5);
+    statusLED(0, 0, 255, false, 5);  // SD initiasation failed
   }
   Serial.println("initialization done.");
-  statusLED(0, 0, 255, true, 3);
+  statusLED(0, 0, 255, true, 3);  // SD initiasation succeeded
 
   // create the system log file
   sysLogFile = SD.open(system_log_file_name.c_str(), FILE_WRITE);
@@ -387,6 +387,10 @@ void setup() {
     statusLED(75,75,125, false, 10);
   }
 
+  if (ENCRYPT) {
+    logAndPrint("ENCRYPT flag is set, log file will be encrypted");
+  }
+
 }
 
 void loop() {
@@ -500,9 +504,9 @@ void loop() {
     // Compute heat index in Celsius (isFahreheit = false)
     float hic = dht.computeHeatIndex(t, h, false);
     
-    json_dht["humidity"] = h;
-    json_dht["temp"] = t;
-    json_dht["heat_index"] = hic;
+    json_dht["humidity"] = round2(h);
+    json_dht["temp"] = round2(t);
+    json_dht["heat_index"] = round2(hic);
   }
   
   /*********************** Get and store MultiGas Data ********************/
@@ -536,13 +540,16 @@ void loop() {
   // we are just going to save the fft data into an array
   for (fft_count=0; fft_count<40; fft_count++) {
     fft_val = lastFFT[fft_count];
-    json_fft.add(fft_val*1000);
+    json_fft.add(round2(fft_val*1000));
   }
 
   /*********************** Printing to Serial ********************/
 
   String deserialized_for_post;
-  char deserialized[1024];
+  char deserialized[960];
+
+  
+  
   serializeJson(root, deserialized);
   serializeJson(root, deserialized_for_post);
 
@@ -551,10 +558,45 @@ void loop() {
   Serial.println();
 
   /*********************** Printing to File ********************/
+  if (ENCRYPT) {
+    // a buffer for the plain text block
+    byte bytePlanebuffer[16];
+    
+    // two duffers for the encrypted data
+    byte encryptedText[960];
+    byte encryptedbuffer[16];
+
+    int specKeySize = SPECKKEYSIZE;
+
+    // we now run through the line, encrupting it one 16 byte block at a time.
+    unsigned int i;
+    for (i=0; i<60; i++) {
+      memcpy(&bytePlanebuffer, &deserialized[i*16], 16);
+ 
+      speckEncrypt(&speck, specKeySize, encryptedbuffer, bytePlanebuffer);
+
+      memcpy(&encryptedText[i*16], &encryptedbuffer, 16);
+    }
+    // I've decided that I am going to save the file in ascii encoded hex, 
+    // which of course doubles its size... but that's ok
+    for(i=0; i<sizeof(encryptedText); i++){
+       char hexChar[2];
+       // cast the byte into hex
+       sprintf(hexChar, "%02X", encryptedText[i]);
+       // and write it to the file
+       myFile.write(hexChar);
+    }
+    // write a new line and flush the buffer
+    myFile.write("\n");
+    myFile.flush();  
+  }
+  else {
+    // if we are not encrypting then just save to the file
+    myFile.write(deserialized);
+    myFile.write("\n");
+    myFile.flush();  
+  }
   
-  myFile.write(deserialized);
-  myFile.write("\n");
-  myFile.flush();
  
   /*********************** POSTing ********************/
 
@@ -583,7 +625,15 @@ void loop() {
         if (wifiSetUp() == WL_CONNECTED) {
           // This  means we have WiFi connection, and should try and upload our file
 
+          if (DEBUG) {
+            logAndPrint("Debug - about to close log file");
+          }
+
           myFile.close();
+
+          if (DEBUG) {
+            logAndPrint("Debug - log file closed");
+          }
 
           // we're going to try and upload all the files!... how exiting
 
@@ -594,21 +644,46 @@ void loop() {
 
           File root = SD.open("/");
 
+          if (DEBUG) {
+            logAndPrint("Debug - opening SD card root");
+          }
+
           while (true) {
+            if (DEBUG) {
+              logAndPrint("Debug - about to open Next File");
+            }
+
+            Serial.println("here1");
             File log_file = root.openNextFile();
+            Serial.println("here2");
+            
+            if (DEBUG) {
+              logAndPrint("Debug - opened Next File");
+            }
             
             if (! log_file ) {
+              if (DEBUG) {
+                logAndPrint("Debug - No more files, breaking loop");
+              }
+
               break;
             }
 
-
             // don't upload the system log file stragiht away.
             if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+              if (DEBUG) {
+                logAndPrint("Debug - SysLog found, skipping");
+              }
+
               continue;
             }
 
             // check to see if it is the archive directory, and if so move on.
             if (log_file.isDirectory()) {
+              if (DEBUG) {
+                logAndPrint("Debug - directory found, skipping");
+              }
+
               continue;
             }
 
@@ -673,11 +748,9 @@ void loop() {
             // on the SD card.
             if (copyFile(log_file) == 0) {
               //  this means the copy worked and so we can delete the file
-              Serial.println("here 1");
               char log_file_name[20];
               strcpy(log_file_name, log_file.name());
-              Serial.println(log_file_name);
-
+              
               // close and delete the log file
               log_file.close();
               SD.remove(log_file_name);
@@ -728,7 +801,7 @@ void loop() {
           
           uploadSystemLog(sysLogFile);
 
-          statusLED(255,215,0, true, 5);
+          statusLED(255,215,0, true, 5);  // Log file uploaded
 
           /* just clear any interupts there might be on the acceleromter */
           int_resp = accel.checkInterrupts();
@@ -760,7 +833,7 @@ void loop() {
 
           myFile.close();
 
-          statusLED(192,192,192,true,5);
+          statusLED(192,192,192,true,5);  // Activity counter 
           powerOff();
       }
     }
@@ -938,7 +1011,13 @@ int wifiSetUp() {
         logAndPrint("WiFi Connected");
         statusLED(255,255,255,true,3);
         // print the status to the log
+        if (DEBUG) {
+            logAndPrint("Debug - about to print wifi status");
+          }
         printWifiStatus();
+        if (DEBUG) {
+            logAndPrint("Debug - printed wifi status");
+        }
         return WL_CONNECTED;
       }
       else {
@@ -1344,4 +1423,18 @@ String getDateTime() {
     datetime = datetime + "Z";
 
     return datetime;
+}
+
+// the function that encrypts a block of text
+void speckEncrypt(BlockCipher *cipher, size_t keySize, byte* encOutput, byte* encInput)
+{
+  cipher->setKey(specKey, keySize);
+  cipher->encryptBlock(encOutput, encInput);
+  return;
+}
+
+// rounds a number to 2 decimal places
+// example: round(3.14159) -> 3.14
+double round2(double value) {
+   return (int)(value * 100 + 0.5) / 100.0;
 }
