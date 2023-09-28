@@ -202,10 +202,10 @@ void setup() {
       break;
     }
     Serial.println("initialization failed!");
-    statusLED(0, 0, 255, false, 5);
+    statusLED(0, 0, 255, false, 5);  // SD initiasation failed
   }
   Serial.println("initialization done.");
-  statusLED(0, 0, 255, true, 3);
+  statusLED(0, 0, 255, true, 3);  // SD initiasation succeeded
 
   // create the system log file
   sysLogFile = SD.open(system_log_file_name.c_str(), FILE_WRITE);
@@ -625,7 +625,15 @@ void loop() {
         if (wifiSetUp() == WL_CONNECTED) {
           // This  means we have WiFi connection, and should try and upload our file
 
+          if (DEBUG) {
+            logAndPrint("Debug - about to close log file");
+          }
+
           myFile.close();
+
+          if (DEBUG) {
+            logAndPrint("Debug - log file closed");
+          }
 
           // we're going to try and upload all the files!... how exiting
 
@@ -636,21 +644,46 @@ void loop() {
 
           File root = SD.open("/");
 
+          if (DEBUG) {
+            logAndPrint("Debug - opening SD card root");
+          }
+
           while (true) {
+            if (DEBUG) {
+              logAndPrint("Debug - about to open Next File");
+            }
+
+            Serial.println("here1");
             File log_file = root.openNextFile();
+            Serial.println("here2");
+            
+            if (DEBUG) {
+              logAndPrint("Debug - opened Next File");
+            }
             
             if (! log_file ) {
+              if (DEBUG) {
+                logAndPrint("Debug - No more files, breaking loop");
+              }
+
               break;
             }
 
-
             // don't upload the system log file stragiht away.
             if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+              if (DEBUG) {
+                logAndPrint("Debug - SysLog found, skipping");
+              }
+
               continue;
             }
 
             // check to see if it is the archive directory, and if so move on.
             if (log_file.isDirectory()) {
+              if (DEBUG) {
+                logAndPrint("Debug - directory found, skipping");
+              }
+
               continue;
             }
 
@@ -768,7 +801,7 @@ void loop() {
           
           uploadSystemLog(sysLogFile);
 
-          statusLED(255,215,0, true, 5);
+          statusLED(255,215,0, true, 5);  // Log file uploaded
 
           /* just clear any interupts there might be on the acceleromter */
           int_resp = accel.checkInterrupts();
@@ -800,7 +833,7 @@ void loop() {
 
           myFile.close();
 
-          statusLED(192,192,192,true,5);
+          statusLED(192,192,192,true,5);  // Activity counter 
           powerOff();
       }
     }
@@ -978,7 +1011,13 @@ int wifiSetUp() {
         logAndPrint("WiFi Connected");
         statusLED(255,255,255,true,3);
         // print the status to the log
+        if (DEBUG) {
+            logAndPrint("Debug - about to print wifi status");
+          }
         printWifiStatus();
+        if (DEBUG) {
+            logAndPrint("Debug - printed wifi status");
+        }
         return WL_CONNECTED;
       }
       else {

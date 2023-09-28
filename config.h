@@ -61,8 +61,9 @@ byte specKey[32] = {0xad, 0x1c, 0x4b, 0x6, 0x5c, 0x85, 0x2a, 0x48, 0xe4, 0xed, 0
 #define PMSerial Serial5
 
 /* Debugging flags */
+#define DEBUG true  // this turns on and off debug logging
 #define CHECK_GPS_DATETIME false
-#define AUTO_POWER_OFF false
+#define AUTO_POWER_OFF true
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
 //#define LOG_FILE_NAME_PREFIX "LocalAirData_"
