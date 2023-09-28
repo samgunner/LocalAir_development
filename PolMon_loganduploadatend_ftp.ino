@@ -708,7 +708,6 @@ void loop() {
             // on the SD card.
             if (copyFile(log_file) == 0) {
               //  this means the copy worked and so we can delete the file
-              Serial.println("here 1");
               char log_file_name[20];
               strcpy(log_file_name, log_file.name());
               Serial.println(log_file_name);
@@ -1383,8 +1382,6 @@ String getDateTime() {
 
 void speckEncrypt(BlockCipher *cipher, size_t keySize, byte* encOutput, byte* encInput)
 {
-  Serial.print("Encryption, with keysize: ");
-  Serial.println(keySize);
   cipher->setKey(specKey, keySize);
   cipher->encryptBlock(encOutput, encInput);
   return;
