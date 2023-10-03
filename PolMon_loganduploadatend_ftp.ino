@@ -412,6 +412,15 @@ void loop() {
   // read data from the GPS in the 'main loop', to see if there is a new message
   GPS.read();
 
+  // this is wrong
+  if (last_seconds = GPS.seconds) {
+    // until we have a lock there are two messages sent together for some reason,
+    // we are just going to skip the second by checking if the seconds are still the 
+    // same.
+    last_seconds = GPS.seconds;
+    return;
+  }
+
   // The FFT setup
   float fft_val;
   int fft_count;
@@ -642,7 +651,7 @@ void loop() {
 
           int numFiles = 0;
 
-          File root = SD.open("/");
+          File filesRoot = SD.open("/");
 
           if (DEBUG) {
             logAndPrint("Debug - opening SD card root");
@@ -653,9 +662,7 @@ void loop() {
               logAndPrint("Debug - about to open Next File");
             }
 
-            Serial.println("here1");
-            File log_file = root.openNextFile();
-            Serial.println("here2");
+            File log_file = filesRoot.openNextFile();
             
             if (DEBUG) {
               logAndPrint("Debug - opened Next File");
@@ -717,14 +724,15 @@ void loop() {
           char to_log[100];
           strcpy(to_log, numFiles_s);
           strcat(to_log, " to be uploaded");
-
           logAndPrint(to_log);
 
+          filesRoot.close();
+
           // we are now going to do the same thing again,  but this time upload the files as we go.
-          root = SD.open("/");
+          filesRoot = SD.open("/");
 
           while (true) {
-            File log_file = root.openNextFile();
+            File log_file = filesRoot.openNextFile();
 
             if (! log_file ) {
               break;
@@ -748,8 +756,16 @@ void loop() {
             // on the SD card.
             if (copyFile(log_file) == 0) {
               //  this means the copy worked and so we can delete the file
-              char log_file_name[20];
+              //String log_file_name_s = (String)log_file.name();
+              //int log_file_name_sl = log_file_name_s.length() + 1;
+              char log_file_name[30];
+              //log_file_name_s.toCharArray(log_file_name, log_file_name_sl);
               strcpy(log_file_name, log_file.name());
+              //Serial.println("This is the cursed line");   // <- for some reason it stops working when I remvoe this!!
+              int j = -1;
+              if (j < 0) {
+                  Serial.println(log_file_name);   // <- for some reason it stops working when I remvoe this!! 
+              }
               
               // close and delete the log file
               log_file.close();
