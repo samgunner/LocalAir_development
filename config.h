@@ -16,7 +16,8 @@ String wifi_networks = "{"
 
 // Upload Server details
 // This uploads to Sam's hostgater server
-#define HTTPS_SERVER "london.localair.uk"
+//#define HTTPS_SERVER "london.localair.uk"
+#define HTTPS_SERVER "192.168.1.222"
 //#define FTP_USERNAME "localAir@sgunner.co.uk"
 //#define FTP_PASSWORD "L0c4lA1rMunky!"
 

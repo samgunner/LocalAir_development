@@ -412,15 +412,6 @@ void loop() {
   // read data from the GPS in the 'main loop', to see if there is a new message
   GPS.read();
 
-  // this is wrong
-  if (last_seconds = GPS.seconds) {
-    // until we have a lock there are two messages sent together for some reason,
-    // we are just going to skip the second by checking if the seconds are still the 
-    // same.
-    last_seconds = GPS.seconds;
-    return;
-  }
-
   // The FFT setup
   float fft_val;
   int fft_count;
@@ -441,6 +432,10 @@ void loop() {
 
     if (!GPS.parse(GPS.lastNMEA())) // this resets the newNMEAreceived() flag to false
       return; // if the parse has failed then we skip and try again.
+
+    if (last_seconds == GPS.seconds) {
+      return;
+    }
 
   /*********************** JSON Object Creation ********************/
 
@@ -634,6 +629,9 @@ void loop() {
         if (wifiSetUp() == WL_CONNECTED) {
           // This  means we have WiFi connection, and should try and upload our file
 
+          // trying to diable the FFT to see if this stops some of the funny behaviour
+          AudioNoInterrupts();
+
           if (DEBUG) {
             logAndPrint("Debug - about to close log file");
           }
@@ -754,18 +752,16 @@ void loop() {
             // and since we don't yet have a good way of checking that the upload
             // has worked we are going instead to try and copy to an archive folder 
             // on the SD card.
-            if (copyFile(log_file) == 0) {
+            //if (copyFile(log_file) == 0) { <------------THIS IS WHERE I@VE UNDONE THE ARCHIVING
+            if (false) {
               //  this means the copy worked and so we can delete the file
               //String log_file_name_s = (String)log_file.name();
               //int log_file_name_sl = log_file_name_s.length() + 1;
               char log_file_name[30];
-              //log_file_name_s.toCharArray(log_file_name, log_file_name_sl);
+
               strcpy(log_file_name, log_file.name());
-              //Serial.println("This is the cursed line");   // <- for some reason it stops working when I remvoe this!!
-              int j = -1;
-              if (j < 0) {
-                  Serial.println(log_file_name);   // <- for some reason it stops working when I remvoe this!! 
-              }
+
+              Serial.println(log_file_name);   // <- for some reason it stops working when I remvoe this!! 
               
               // close and delete the log file
               log_file.close();
@@ -796,6 +792,8 @@ void loop() {
               strcat(to_log, log_file_name);
               logAndPrint(to_log);
             }
+
+            log_file.close();
           }
 
           // we can't, as yet, tell if the file upload was a success, and so we are 
@@ -1106,10 +1104,8 @@ int uploadFile(File log_file) {
     strcpy(to_log, "Attempting to upload ");
     strcat(to_log, log_file.name());
     logAndPrint(to_log);
-          
-    myFile = log_file;
 
-    unsigned long fileSize = myFile.size();
+    unsigned long fileSize = log_file.size();
 
     int red = 255;
     int green = 0;
@@ -1124,21 +1120,28 @@ int uploadFile(File log_file) {
       ledStep = 1;
     }
 
-    client.connectSSL(server, 443);
+    //client.connectSSL(server, 443);
+    client.connect(server, 8080);
+    Serial.println("Uploading without SSL");
     client.println("POST /data HTTP/1.1");
     client.print("Host: ");
     client.println(server);
     client.print("Content-Length: ");
-    client.println(myFile.size());
+    client.println(log_file.size());
     client.println("Content-Type: text/plain");
+    client.println("Connection: close");
     client.println("");
 
     int i = ledStep;
 
-    while (myFile.available()) {
-      char c = myFile.read();
+    int fileSizeCount = 0;
+
+    while (log_file.available()) {
+      char c = log_file.read();
       //Serial.print(c);
       client.print(c);
+      /*
+      fileSizeCount++;
 
       i--;
 
@@ -1152,18 +1155,37 @@ int uploadFile(File log_file) {
         if (red < 0) red = 0;
         if (green > 255) green = 255;
         if (green < 0) green = 0;
-      }
+      }*/
     }
 
+    Serial.print("fileSizeCount: ");
+    Serial.println(fileSizeCount);
+
+    Serial.print("log_file.size(): ");
+    Serial.println(log_file.size());
+
+
     //logAndPrint("", false);
+    Serial.print("Returned: ");
     while (client.available()) {
       char c = client.read();
-      //Serial.write(c);
+      Serial.write(c);
       //logAndPrint(c, false, false);
     }
     //logAndPrint("", true, false);
 
+    //Serial.flush();
+
+    while (true) {
+      if(!client.connected()) {
+        logAndPrint("Disconnecting from server");
+        client.stop();
+        break;
+      }
+    }
+    
     logAndPrint("Upload finished, disconnecting from server.");
+    client.stop();
     
     analogWrite(LED_PIN_R, 0);
     analogWrite(LED_PIN_G, 0);
@@ -1240,6 +1262,7 @@ int uploadSystemLog(File log_file) {
     }
     
     Serial.println("Upload finished, disconnecting from server.");
+    client.stop();
     
     analogWrite(LED_PIN_R, 0);
     analogWrite(LED_PIN_G, 0);
