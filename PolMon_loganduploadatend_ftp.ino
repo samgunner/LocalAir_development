@@ -567,14 +567,14 @@ void loop() {
     byte bytePlanebuffer[16];
     
     // two duffers for the encrypted data
-    byte encryptedText[960];
+    byte encryptedText[line_length];
     byte encryptedbuffer[16];
 
     int specKeySize = SPECKKEYSIZE;
 
     // we now run through the line, encrupting it one 16 byte block at a time.
     unsigned int i;
-    for (i=0; i<60; i++) {
+    for (i=0; i<(line_length/16); i++) {
       memcpy(&bytePlanebuffer, &deserialized[i*16], 16);
  
       speckEncrypt(&speck, specKeySize, encryptedbuffer, bytePlanebuffer);
@@ -752,8 +752,7 @@ void loop() {
             // and since we don't yet have a good way of checking that the upload
             // has worked we are going instead to try and copy to an archive folder 
             // on the SD card.
-            //if (copyFile(log_file) == 0) { <------------THIS IS WHERE I@VE UNDONE THE ARCHIVING
-            if (false) {
+            if (copyFile(log_file) == 0) { 
               //  this means the copy worked and so we can delete the file
               //String log_file_name_s = (String)log_file.name();
               //int log_file_name_sl = log_file_name_s.length() + 1;
@@ -1114,15 +1113,16 @@ int uploadFile(File log_file) {
     analogWrite(LED_PIN_G, green);
     analogWrite(LED_PIN_B, 0);
 
-    int ledStep = fileSize / 255;
+    // this should be the number  of lines divided by 255
+    int ledStep = (fileSize / line_length) / 255;
 
     if (ledStep == 0) {
       ledStep = 1;
     }
 
-    //client.connectSSL(server, 443);
-    client.connect(server, 8080);
-    Serial.println("Uploading without SSL");
+    client.connectSSL(server, 443);
+    //client.connect(server, 8080);
+    //Serial.println("Uploading without SSL");
     client.println("POST /data HTTP/1.1");
     client.print("Host: ");
     client.println(server);
@@ -1137,11 +1137,10 @@ int uploadFile(File log_file) {
     int fileSizeCount = 0;
 
     while (log_file.available()) {
-      char c = log_file.read();
+      String c = log_file.readStringUntil('\n');
       //Serial.print(c);
       client.print(c);
-      /*
-      fileSizeCount++;
+      client.print('\n');
 
       i--;
 
@@ -1155,34 +1154,20 @@ int uploadFile(File log_file) {
         if (red < 0) red = 0;
         if (green > 255) green = 255;
         if (green < 0) green = 0;
-      }*/
+      }
     }
-
-    Serial.print("fileSizeCount: ");
-    Serial.println(fileSizeCount);
-
-    Serial.print("log_file.size(): ");
-    Serial.println(log_file.size());
-
 
     //logAndPrint("", false);
     Serial.print("Returned: ");
     while (client.available()) {
       char c = client.read();
       Serial.write(c);
-      //logAndPrint(c, false, false);
     }
-    //logAndPrint("", true, false);
 
-    //Serial.flush();
-
-    while (true) {
-      if(!client.connected()) {
-        logAndPrint("Disconnecting from server");
-        client.stop();
-        break;
-      }
-    }
+    
+    logAndPrint("Disconnecting from server");
+    client.stop();
+    
     
     logAndPrint("Upload finished, disconnecting from server.");
     client.stop();
@@ -1220,7 +1205,9 @@ int uploadSystemLog(File log_file) {
     analogWrite(LED_PIN_G, green);
     analogWrite(LED_PIN_B, 0);
 
-    int ledStep = fileSize / 255;
+    // then number 150 is a guess at the average number of characters in
+    // a line of the syslog file.
+    int ledStep = (fileSize / 150) / 255;
 
     if (ledStep == 0) {
       ledStep = 1;
@@ -1238,7 +1225,7 @@ int uploadSystemLog(File log_file) {
     int i = ledStep;
 
     while (myFile.available()) {
-      char c = myFile.read();
+      String c = log_file.readStringUntil('\n');
       //Serial.print(c);
       client.print(c);
 
@@ -1344,7 +1331,9 @@ int copyFile(File log_file) {
 
   while (log_file.available()) {
     // this is where we actually copy acoss.
-    archiveFile.write(log_file.read());
+    char this_line[((line_length*2)+1)];
+    log_file.read(this_line, ((line_length*2)+1));
+    archiveFile.write(this_line, ((line_length*2)+1));
 
     i--;
 
