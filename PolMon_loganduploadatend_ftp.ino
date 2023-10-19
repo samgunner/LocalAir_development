@@ -818,6 +818,8 @@ void loop() {
 
           /* just clear any interupts there might be on the acceleromter */
           int_resp = accel.checkInterrupts();
+
+          Serial.println("Shutting Down");
     
           powerOff();
         }      
@@ -1321,7 +1323,7 @@ int copyFile(File log_file) {
   analogWrite(LED_PIN_G, green);
   analogWrite(LED_PIN_B, blue);
 
-  int ledStep = fileSize / 255;
+  int ledStep = (fileSize / ((line_length*2)+1))/ 255;
 
   if (ledStep == 0) {
     ledStep = 1;

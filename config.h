@@ -65,8 +65,8 @@ int line_length = 960;
 #define PMSerial Serial5
 
 /* Debugging flags */
-#define DEBUG true  // this turns on and off debug logging
-#define CHECK_GPS_DATETIME false
+#define DEBUG false  // this turns on and off debug logging
+#define CHECK_GPS_DATETIME true
 #define AUTO_POWER_OFF true
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
