@@ -218,6 +218,7 @@ void setup() {
   }
 
   // writing a start up message
+  logAndPrint("======================================");
   logAndPrint("Starting LocalAir Polultion Monitoring");
 
   // a 5s delay whiel things sort themselves out
@@ -846,6 +847,9 @@ void loop() {
         // if the activity counter has got to zero then turn off
         if (activity_counter < 1) {
 
+          logAndPrint('No movement Detected for 5 minutes, switching off');
+
+          sysLogFile.close();
           myFile.close();
 
           statusLED(192,192,192,true,5);  // Activity counter 
