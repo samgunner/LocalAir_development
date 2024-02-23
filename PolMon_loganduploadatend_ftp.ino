@@ -180,6 +180,8 @@ Speck speck;
 
 /*********************** SET FUNCTION ************************/
 
+int uploadFile(File log_file, const bool sysFile=false);
+
 void setup() {
 
   delay(1000);
@@ -813,7 +815,7 @@ void loop() {
 
           sysLogFile = SD.open(SYSTEM_LOG_FILE_NAME, FILE_READ);
           
-          uploadSystemLog(sysLogFile);
+          uploadFile(sysLogFile, true);
 
           statusLED(255,215,0, true, 5);  // Log file uploaded
 
@@ -847,7 +849,7 @@ void loop() {
         // if the activity counter has got to zero then turn off
         if (activity_counter < 1) {
 
-          logAndPrint('No movement Detected for 5 minutes, switching off');
+          logAndPrint("No movement Detected for 5 minutes, switching off");
 
           sysLogFile.close();
           myFile.close();
@@ -1100,7 +1102,7 @@ String IpAddress2String(const IPAddress& ipAddress)
 }
 
 // a function for uploading the data file to the server
-int uploadFile(File log_file) {
+int uploadFile(File log_file, const bool sysFile=false) {
     // we are now going to upload to James's server, using SSL of all things
 
     char server[] = HTTPS_SERVER;
@@ -1129,7 +1131,12 @@ int uploadFile(File log_file) {
     client.connectSSL(server, 443);
     //client.connect(server, 8080);
     //Serial.println("Uploading without SSL");
-    client.println("POST /data HTTP/1.1");
+    if (sysFile) {
+        client.println("POST /data HTTP/1.1"); // this is where a new location to send the sysLog file wil go
+    }
+    else {
+        client.println("POST /data HTTP/1.1");
+    }
     client.print("Host: ");
     client.println(server);
     client.print("Content-Length: ");
