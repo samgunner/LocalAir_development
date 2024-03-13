@@ -195,38 +195,15 @@ void setup() {
   // seems risky, but if we are going to start logging quickly we need
   // to set up the SD card first
 
-  /*********************** SD Card Setup ************************/
-
-  Serial.print("Initializing SD card...");
-
-  while (true) {
-    if (SD.begin(chipSelect)) {
-      break;
-    }
-    Serial.println("initialization failed!");
-    statusLED(0, 0, 255, false, 5);  // SD initiasation failed
-  }
-  Serial.println("initialization done.");
-  statusLED(0, 0, 255, true, 3);  // SD initiasation succeeded
-
-  // create the system log file
-  sysLogFile = SD.open(system_log_file_name.c_str(), FILE_WRITE);
-  // check to see if the system log file now exists... not sure what we'll do if it doesn't...
-  if (!sysLogFile) {
-    statusLED(165,42,42,false,10);
-  }
-  else {
-    statusLED(165,42,42,true,5);
-  }
-
-  // writing a start up message
-  logAndPrint("======================================");
-  logAndPrint("Starting LocalAir Polultion Monitoring");
-
   // a 5s delay whiel things sort themselves out
   rainbowLED(5000);
 
-
+  /* We are moving the accelerometer to the first thing we do as we are also 
+   *  going put a depower command into the SD card checking bit.
+   *  This is because the SD can currently get stuck in a loop where it just tries
+   *  and failes for ever, which sometimes it seems that a restart can bring
+   *  things back.
+   */
   /*************** Accelerometer Setup ****************/
   /* Initialise the sensor */
   while(!accel.begin())
@@ -267,6 +244,47 @@ void setup() {
 
   logAndPrint("ADXL343 accelerometer init complete");
   statusLED(255,255,0,true,1);
+
+  /*********************** SD Card Setup ************************/
+
+  Serial.print("Initializing SD card...");
+
+  // we are going to have a number of goes at initialising the SD card and 
+  // and then give up and restart.
+  int SD_retries = 5;
+
+  while (true) {
+    if (SD.begin(chipSelect)) {
+      break;
+    }
+    Serial.println("initialization failed!");
+    statusLED(0, 0, 255, false, 5);  // SD initiasation failed
+
+    // count down the number of retries
+    SD_retries = SD_retries - 1;
+
+    if (SD_retries < 1 ) {
+      // do a restart and see if we have more luck with the SD card 
+      // next time.
+      powerOff();
+    }
+  }
+  Serial.println("initialization done.");
+  statusLED(0, 0, 255, true, 3);  // SD initiasation succeeded
+
+  // create the system log file
+  sysLogFile = SD.open(system_log_file_name.c_str(), FILE_WRITE);
+  // check to see if the system log file now exists... not sure what we'll do if it doesn't...
+  if (!sysLogFile) {
+    statusLED(165,42,42,false,10);
+  }
+  else {
+    statusLED(165,42,42,true,5);
+  }
+
+  // writing a start up message
+  logAndPrint("======================================");
+  logAndPrint("Starting LocalAir Polultion Monitoring");
 
   /*********************** WIFI CONNECTION  ************************/
 
