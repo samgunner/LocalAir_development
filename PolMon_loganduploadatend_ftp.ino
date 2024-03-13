@@ -236,7 +236,7 @@ void setup() {
    *  0x50 sort of worked, although putting on the bike it looks like
    *  it timed out quite often, so am now trying 0x30
    */
-  accel.writeRegister(0x24, 0x30);
+  accel.writeRegister(0x24, 0x70);
   /* and adding all the axis to the interupt */
     // and trying to add all the of the axis to the interupt
   accel.writeRegister(0x27, 0xE0);
@@ -262,6 +262,7 @@ void setup() {
 
     // count down the number of retries
     SD_retries = SD_retries - 1;
+    Serial.print(SD_retries);
 
     if (SD_retries < 1 ) {
       // do a restart and see if we have more luck with the SD card 
@@ -1074,6 +1075,9 @@ int wifiSetUp() {
 /* a function that will do the powering off */
 void powerOff() {
   if (AUTO_POWER_OFF) {
+    /* just clear any interupts there might be on the acceleromter */
+    int_resp = accel.checkInterrupts();
+    
     digitalWrite(POWER_OFF_PIN, HIGH); 
   }
 }
