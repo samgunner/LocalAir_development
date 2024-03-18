@@ -2,6 +2,13 @@
  * The deinitions that go with the LocalAir Software
  */
 
+/********************
+ * These two variable must be unique for each device
+ ********************/
+#define DEVICE_ID "AL_001"
+byte specKey[32] = {0xad, 0x1c, 0x4b, 0x6, 0x5c, 0x85, 0x2a, 0x48, 0xe4, 0xed, 0x33, 0x23, 0x4c, 0x9f, 0xed, 0x56, 0x23, 0x46, 0x59, 0xfa, 0x3c, 0x70, 0x82, 0x97, 0x45, 0xbd, 0x2b, 0xf1, 0xdc, 0xf4, 0xb6, 0xce};
+/*******************/
+
 /*
  * Below is the declaration of a string that will be converted into a dict
  * of the wifi networks that we're able to access.
@@ -17,18 +24,6 @@ String wifi_networks = "{"
 // Upload Server details
 // This uploads to Sam's hostgater server
 #define HTTPS_SERVER "london.localair.uk"
-//#define HTTPS_SERVER "192.168.1.222"
-//#define FTP_USERNAME "localAir@sgunner.co.uk"
-//#define FTP_PASSWORD "L0c4lA1rMunky!"
-
-//#define SECRET_SSID "LocalAir Project" // James's
-//#define SECRET_SSID "Scooter Demo" // Mine
-//#define SECRET_SSID "Juice4Jesus" // Home
-//define SECRET_SSID "Harp Controller" // Office
-
-//#define SECRET_PASS "BikesAreBetter"
-//#define SECRET_PASS "J3w5forGingers"
-//define SECRET_PASS "harpaccess" // Office
 
 //#define SERVER_ADDRESS "10.42.0.1" // James
 #define SERVER_ADDRESS "10.0.69.1" // Mine
@@ -56,7 +51,6 @@ String wifi_networks = "{"
 
 // and the encryption key information
 #define SPECKKEYSIZE 32
-byte specKey[32] = {0xad, 0x1c, 0x4b, 0x6, 0x5c, 0x85, 0x2a, 0x48, 0xe4, 0xed, 0x33, 0x23, 0x4c, 0x9f, 0xed, 0x56, 0x23, 0x46, 0x59, 0xfa, 0x3c, 0x70, 0x82, 0x97, 0x45, 0xbd, 0x2b, 0xf1, 0xdc, 0xf4, 0xb6, 0xce};
 
 // below a variable that defines the number of bytes is a single line of the encrupted file.
 int line_length = 960;

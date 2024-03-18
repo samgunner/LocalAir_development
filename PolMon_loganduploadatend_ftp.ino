@@ -1165,6 +1165,9 @@ int uploadFile(File log_file, const bool sysFile=false) {
     client.println(log_file.size());
     client.println("Content-Type: text/plain");
     client.println("Connection: close");
+    // including a header with the device ID in it.
+    client.print("Device-ID: ");
+    client.println(DEVICE_ID);
     client.println("");
 
     int i = ledStep;
