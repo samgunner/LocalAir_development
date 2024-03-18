@@ -20,6 +20,11 @@
 // or ethernet clients.
 #include "config.h"
 
+// there is also a "secrets.h" file that includes the device ID and the Speck 
+// Encryption key. This file will not be updated in git, where instead an example
+// will be provided.
+#include "secrets.h"
+
 /************************ LED and Power Off pins definition  *******************************/
 
 #define POWER_OFF_PIN (0) // This pin drives the relay that will turn the power off the the Teensy
