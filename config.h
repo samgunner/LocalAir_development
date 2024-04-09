@@ -51,6 +51,9 @@ int line_length = 960;
 /* Pollution Sensors */
 #define PMSerial Serial5
 
+/* the sensitivity of the accelerometer interupt */
+#define ACCEL_TRIG_SENSE 0x50
+
 /* Debugging flags */
 #define DEBUG false  // this turns on and off debug logging
 #define CHECK_GPS_DATETIME true
@@ -58,6 +61,6 @@ int line_length = 960;
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
 //#define LOG_FILE_NAME_PREFIX "LocalAirData_"
-#define LOG_FILE_NAME_PREFIX "LAD_"
+#define LOG_FILE_NAME_PREFIX DEVICE_ID
 
 /**************************** WiF Status Function ************************************/

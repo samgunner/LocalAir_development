@@ -241,7 +241,7 @@ void setup() {
    *  0x50 sort of worked, although putting on the bike it looks like
    *  it timed out quite often, so am now trying 0x30
    */
-  accel.writeRegister(0x24, 0x70);
+  accel.writeRegister(0x24, ACCEL_TRIG_SENSE);
   /* and adding all the axis to the interupt */
     // and trying to add all the of the axis to the interupt
   accel.writeRegister(0x27, 0xE0);
@@ -291,6 +291,7 @@ void setup() {
   // writing a start up message
   logAndPrint("======================================");
   logAndPrint("Starting LocalAir Polultion Monitoring");
+  logAndPrint(DEVICE_ID);
 
   /*********************** WIFI CONNECTION  ************************/
 
@@ -1158,21 +1159,26 @@ int uploadFile(File log_file, const bool sysFile=false) {
     client.connectSSL(server, 443);
     //client.connect(server, 8080);
     //Serial.println("Uploading without SSL");
+    
+    client.print("POST /");
+    client.print(DEVICE_ID);  // we are now including the device ID in the url, so that the
+                              // backend knows which key to use for decryption.
+    
     if (sysFile) {
-        client.println("POST /data HTTP/1.1"); // this is where a new location to send the sysLog file wil go
+        client.print("/data"); // this is where a new location to send the sysLog file wil go
     }
     else {
-        client.println("POST /data HTTP/1.1");
+        client.print("/data");
     }
+
+    client.println(" HTTP/1.1");
+    
     client.print("Host: ");
     client.println(server);
     client.print("Content-Length: ");
     client.println(log_file.size());
     client.println("Content-Type: text/plain");
     client.println("Connection: close");
-    // including a header with the device ID in it.
-    client.print("Device-ID: ");
-    client.println(DEVICE_ID);
     client.println("");
 
     int i = ledStep;
@@ -1441,6 +1447,7 @@ String makeLogFileName() {
   String tmp_log_file_name;
   
   tmp_log_file_name = LOG_FILE_NAME_PREFIX;
+  tmp_log_file_name = tmp_log_file_name + "_";
 
   if (GPS.year < 10 ) tmp_log_file_name = tmp_log_file_name + "0";
   tmp_log_file_name = tmp_log_file_name + GPS.year;
