@@ -1161,15 +1161,18 @@ int uploadFile(File log_file, const bool sysFile=false) {
     //Serial.println("Uploading without SSL");
     
     client.print("POST /");
+    
+    if (sysFile) {
+        client.print("al_data"); // this is where a new location to send the sysLog file wil go
+    }
+    else {
+        client.print("al_data");
+    }
+
+    client.print("/");
     client.print(DEVICE_ID);  // we are now including the device ID in the url, so that the
                               // backend knows which key to use for decryption.
     
-    if (sysFile) {
-        client.print("/data"); // this is where a new location to send the sysLog file wil go
-    }
-    else {
-        client.print("/data");
-    }
 
     client.println(" HTTP/1.1");
     
@@ -1209,8 +1212,8 @@ int uploadFile(File log_file, const bool sysFile=false) {
     //logAndPrint("", false);
     Serial.print("Returned: ");
     while (client.available()) {
-      char c = client.read();
-      Serial.write(c);
+      Sring resp = client.readStringUntil('\r');
+      Serial.write(resp);
     }
 
     
