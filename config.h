@@ -11,15 +11,13 @@ String wifi_networks = "{"
   "\"Harp Controller\" : \"harpaccess\","
   "\"LocalAir Project\" : \"BikesAreBetter\","
   "\"Scooter Demo\" : \"BikesAreBetter\","
+  "\"BTB-PSCHGC\" : \"N9Pdfgpnh6DPRH\","
   "\"Fire Flower\" : \"b57f23aa6047\""
 "}";
 
 // Upload Server details
 // This uploads to Sam's hostgater server
 #define HTTPS_SERVER "london.localair.uk"
-
-//#define SERVER_ADDRESS "10.42.0.1" // James
-#define SERVER_ADDRESS "10.0.69.1" // Mine
 
 /*
  * System log file name:
@@ -37,7 +35,7 @@ String wifi_networks = "{"
 #endif
 
 #include <WiFiNINA.h>
-#include <ArduinoHttpClient.h>
+//#include <ArduinoHttpClient.h>
 
 #define STREAM false // deciding weather to stream the data or not...
 #define ENCRYPT true // flag to weather to encrypt onto the SD card or not
@@ -56,8 +54,8 @@ int line_length = 960;
 
 /* Debugging flags */
 #define DEBUG false  // this turns on and off debug logging
-#define CHECK_GPS_DATETIME true
-#define AUTO_POWER_OFF true
+#define CHECK_GPS_DATETIME false
+#define AUTO_POWER_OFF false
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
 //#define LOG_FILE_NAME_PREFIX "LocalAirData_"

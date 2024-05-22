@@ -96,19 +96,6 @@ Adafruit_GPS GPS(&GPSSerial);
 #include <SD.h>
 #include <SerialFlash.h>
 
-/*********************** FTP Include ************************/
-
-//#include <FTPClient_Generic.h>
-
-// This uploads to Sam's hostgater server
-//char ftp_server[] = FTP_SERVER;
-
-//char ftp_user[]   = FTP_USERNAME;
-//char ftp_pass[]   = FTP_PASSWORD;
-
-// FTPClient_Generic(char* _serverAdress, char* _userName, char* _passWord, uint16_t _timeout = 10000);
-//FTPClient_Generic ftp (ftp_server, ftp_user, ftp_pass, 60000);
-
 /*********************** JSON Imports and setup ************************/
 
 // we are going to try storing the data to a json object, because it looks quite neet,
@@ -169,12 +156,7 @@ const int chipSelect = 9;
 int last_seconds = 0;
 
 /*********************** CONNECTION PARAMETERS ************************/
-char serverAddress[] = SERVER_ADDRESS;  // server address
-int port = 5000;
-
-WiFiClient client;
-//HttpClient client = HttpClient(wifi, serverAddress, port);
-//client.setHttpResponseTimeout(1);
+WiFiSSLClient client;
 int status = WL_IDLE_STATUS;
 
 /*********************** Encryption **************************/
@@ -775,49 +757,53 @@ void loop() {
             }
 
             // upload this log_file
-            uploadFile(log_file);
+            int upload_return = uploadFile(log_file);
 
-            // and since we don't yet have a good way of checking that the upload
-            // has worked we are going instead to try and copy to an archive folder 
-            // on the SD card.
-            if (copyFile(log_file) == 0) { 
-              //  this means the copy worked and so we can delete the file
-              //String log_file_name_s = (String)log_file.name();
-              //int log_file_name_sl = log_file_name_s.length() + 1;
-              char log_file_name[30];
-
-              strcpy(log_file_name, log_file.name());
-
-              Serial.println(log_file_name);   // <- for some reason it stops working when I remvoe this!! 
-              
-              // close and delete the log file
-              log_file.close();
-              SD.remove(log_file_name);
-
-              // check to see if it deleted ok
-              if (SD.exists(log_file_name)) {
-                char to_log[100];
-                strcpy(to_log, "Warning - could not delete ");
-                strcat(to_log, log_file_name);
-                logAndPrint(to_log);
+            // we are going to check the return code of the uploadFile function
+            // to see if things actually uploaded.
+            if (upload_return == 0) {
+              // and since we don't yet have a good way of checking that the upload
+              // has worked we are going instead to try and copy to an archive folder 
+              // on the SD card.
+              if (copyFile(log_file) == 0) { 
+                //  this means the copy worked and so we can delete the file
+                //String log_file_name_s = (String)log_file.name();
+                //int log_file_name_sl = log_file_name_s.length() + 1;
+                char log_file_name[30];
+  
+                strcpy(log_file_name, log_file.name());
+  
+                Serial.println(log_file_name);   // <- for some reason it stops working when I remvoe this!! 
+                
+                // close and delete the log file
+                log_file.close();
+                SD.remove(log_file_name);
+  
+                // check to see if it deleted ok
+                if (SD.exists(log_file_name)) {
+                  char to_log[100];
+                  strcpy(to_log, "Warning - could not delete ");
+                  strcat(to_log, log_file_name);
+                  logAndPrint(to_log);
+                }
+                else {
+                  char to_log[100];
+                  strcpy(to_log, "Successfully deleted ");
+                  strcat(to_log, log_file_name);
+                  logAndPrint(to_log);
+                }
               }
               else {
+  
+                char log_file_name[] = {log_file.name()};
+                
+                log_file.close();
+                
                 char to_log[100];
-                strcpy(to_log, "Successfully deleted ");
+                strcpy(to_log, "Warning - could not copy ");
                 strcat(to_log, log_file_name);
                 logAndPrint(to_log);
               }
-            }
-            else {
-
-              char log_file_name[] = {log_file.name()};
-              
-              log_file.close();
-              
-              char to_log[100];
-              strcpy(to_log, "Warning - could not copy ");
-              strcat(to_log, log_file_name);
-              logAndPrint(to_log);
             }
 
             log_file.close();
@@ -840,9 +826,15 @@ void loop() {
 
           sysLogFile = SD.open(SYSTEM_LOG_FILE_NAME, FILE_READ);
           
-          uploadFile(sysLogFile, true);
+          int upload_status = uploadFile(sysLogFile, true);
 
-          statusLED(255,215,0, true, 5);  // Log file uploaded
+          if (upload_status == 0) {
+            statusLED(255,215,0, true, 5);  // Log file uploaded
+          }
+          else {
+            statusLED(255,215,0, false, 5);  // Log file failed to upload
+          }
+          
 
           /* just clear any interupts there might be on the acceleromter */
           int_resp = accel.checkInterrupts();
@@ -1134,183 +1126,135 @@ int uploadFile(File log_file, const bool sysFile=false) {
     // we are now going to upload to James's server, using SSL of all things
 
     char server[] = HTTPS_SERVER;
+
+    char log_file_size_string[7];
+    itoa(log_file.size(), log_file_size_string, 10);
     
     char to_log[50];
     strcpy(to_log, "Attempting to upload ");
     strcat(to_log, log_file.name());
+    strcat(to_log, " (");
+    strcat(to_log, log_file_size_string);
+    strcat(to_log, " Bytes)");
     logAndPrint(to_log);
 
-    unsigned long fileSize = log_file.size();
+    // we are going to check to see if connection was successfull
+    // and then do something different it it wasn't.
+    bool server_connected = client.connect(server, 443);
 
-    int red = 255;
-    int green = 0;
+    // check connection
+    if (server_connected) {
 
-    analogWrite(LED_PIN_R, red);
-    analogWrite(LED_PIN_G, green);
-    analogWrite(LED_PIN_B, 0);
+      // the connection was successfull! happy days!
+      char to_log[50];
+      strcpy(to_log, "Successfully connected to:  ");
+      strcat(to_log, server);
+      logAndPrint(to_log);
 
-    // this should be the number  of lines divided by 255
-    int ledStep = (fileSize / line_length) / 255;
+      unsigned long fileSize = log_file.size();
+  
+      int red = 255;
+      int green = 0;
+  
+      analogWrite(LED_PIN_R, red);
+      analogWrite(LED_PIN_G, green);
+      analogWrite(LED_PIN_B, 0);
+  
+      // this should be the number  of lines divided by 255
+      int ledStep = (fileSize / line_length) / 255;
+  
+      if (ledStep == 0) {
+        ledStep = 1;
+      }
+  
+      client.print("POST /");
+      
+      if (sysFile) {
+          client.print("la_syslog"); // this is where a new location to send the sysLog file wil go
+      }
+      else {
+          client.print("la_data");
+      }
+  
+      client.print("/");
+      client.print(DEVICE_ID);  // we are now including the device ID in the url, so that the
+                                // backend knows which key to use for decryption.
+      
+  
+      client.println(" HTTP/1.1");
+      
+      client.print("Host: ");
+      client.println(server);
+      client.print("Content-Length: ");
+      client.println(log_file_size_string);
+      client.println("Content-Type: text/plain");
+      client.println("Connection: close");
+      client.println("");
+  
+      int i = ledStep;
+  
+      int fileSizeCount = 0;
+  
+      while (log_file.available()) {
+        String c = log_file.readString();
+        //Serial.print(c);
+        client.print(c);
+        //client.print('\n');
+  
+        i--;
+  
+        if (i <= 0) {
+          analogWrite(LED_PIN_R, red--);
+          analogWrite(LED_PIN_G, green++);
+  
+          i = ledStep;
+  
+          if (red > 255) red = 255;
+          if (red < 0) red = 0;
+          if (green > 255) green = 255;
+          if (green < 0) green = 0;
+        }
+      }
+  
+      //logAndPrint("", false);
+      Serial.print("Returned: ");
+      while (client.available()) {
+        String resp = client.read();
+        Serial.print(resp);
+      }
+  
+      
+      logAndPrint("Disconnecting from server");
+      client.stop();
+      
+      
+      logAndPrint("Upload finished, disconnecting from server.");
+      client.stop();
+      
+      analogWrite(LED_PIN_R, 0);
+      analogWrite(LED_PIN_G, 0);
+      analogWrite(LED_PIN_B, 0);
+  
+      //TODO, it would be nice to have some way of checking the uplaod had actually worked....
+      // for now we are just going  to flash happily...
+  
+      statusLED(255,0,255, true, 3);
 
-    if (ledStep == 0) {
-      ledStep = 1;
-    }
-
-    client.connectSSL(server, 443);
-    //client.connect(server, 8080);
-    //Serial.println("Uploading without SSL");
-    
-    client.print("POST /");
-    
-    if (sysFile) {
-        client.print("al_data"); // this is where a new location to send the sysLog file wil go
+      // return a zero because things worked
+      return 0;
     }
     else {
-        client.print("al_data");
+      // the connection could not be made
+      char to_log[50];
+      strcpy(to_log, "ERROR, could not connected to:  ");
+      strcat(to_log, server);
+      logAndPrint(to_log);
+      logAndPrint("File upload aborted");
+
+      statusLED(255,0,255, false, 3);
+      // return a zero because things worked
+      return 1;
     }
-
-    client.print("/");
-    client.print(DEVICE_ID);  // we are now including the device ID in the url, so that the
-                              // backend knows which key to use for decryption.
-    
-
-    client.println(" HTTP/1.1");
-    
-    client.print("Host: ");
-    client.println(server);
-    client.print("Content-Length: ");
-    client.println(log_file.size());
-    client.println("Content-Type: text/plain");
-    client.println("Connection: close");
-    client.println("");
-
-    int i = ledStep;
-
-    int fileSizeCount = 0;
-
-    while (log_file.available()) {
-      String c = log_file.readStringUntil('\n');
-      //Serial.print(c);
-      client.print(c);
-      client.print('\n');
-
-      i--;
-
-      if (i <= 0) {
-        analogWrite(LED_PIN_R, red--);
-        analogWrite(LED_PIN_G, green++);
-
-        i = ledStep;
-
-        if (red > 255) red = 255;
-        if (red < 0) red = 0;
-        if (green > 255) green = 255;
-        if (green < 0) green = 0;
-      }
-    }
-
-    //logAndPrint("", false);
-    Serial.print("Returned: ");
-    while (client.available()) {
-      Sring resp = client.readStringUntil('\r');
-      Serial.write(resp);
-    }
-
-    
-    logAndPrint("Disconnecting from server");
-    client.stop();
-    
-    
-    logAndPrint("Upload finished, disconnecting from server.");
-    client.stop();
-    
-    analogWrite(LED_PIN_R, 0);
-    analogWrite(LED_PIN_G, 0);
-    analogWrite(LED_PIN_B, 0);
-
-    //TODO, it would be nice to have some way of checking the uplaod had actually worked....
-    // for now we are just going  to flash happily...
-
-    statusLED(255,0,255, true, 3);
-}
-
-// This is exactly the same as the normal log file upload
-// but has been seperated out so that it can be pointed somewhere else in future
-int uploadSystemLog(File log_file) {
-    // we are now going to upload to James's server, using SSL of all things
-
-    char server[] = HTTPS_SERVER;
-    
-    char to_log[50];
-    strcpy(to_log, "Attempting to upload ");
-    strcat(to_log, log_file.name());
-    Serial.println(to_log);
-          
-    myFile = log_file;
-
-    unsigned long fileSize = myFile.size();
-
-    int red = 255;
-    int green = 0;
-
-    analogWrite(LED_PIN_R, red);
-    analogWrite(LED_PIN_G, green);
-    analogWrite(LED_PIN_B, 0);
-
-    // then number 150 is a guess at the average number of characters in
-    // a line of the syslog file.
-    int ledStep = (fileSize / 150) / 255;
-
-    if (ledStep == 0) {
-      ledStep = 1;
-    }
-
-    client.connectSSL(server, 443);
-    client.println("POST /data HTTP/1.1"); // <---------- this is where a new location would go
-    client.print("Host: ");
-    client.println(server);
-    client.print("Content-Length: ");
-    client.println(myFile.size());
-    client.println("Content-Type: text/plain");
-    client.println("");
-
-    int i = ledStep;
-
-    while (myFile.available()) {
-      String c = log_file.readStringUntil('\n');
-      //Serial.print(c);
-      client.print(c);
-
-      i--;
-
-      if (i <= 0) {
-        analogWrite(LED_PIN_R, red--);
-        analogWrite(LED_PIN_G, green++);
-
-        i = ledStep;
-
-        if (red > 255) red = 255;
-        if (red < 0) red = 0;
-        if (green > 255) green = 255;
-        if (green < 0) green = 0;
-      }
-    }
-
-    while (client.available()) {
-      char c = client.read();
-    }
-    
-    Serial.println("Upload finished, disconnecting from server.");
-    client.stop();
-    
-    analogWrite(LED_PIN_R, 0);
-    analogWrite(LED_PIN_G, 0);
-    analogWrite(LED_PIN_B, 0);
-
-    //TODO, it would be nice to have some way of checking the uplaod had actually worked....
-    // for now we are just going  to flash happily...
-
-    statusLED(255,0,255, true, 3);
 }
 
 // rather than deleting a file after up load we are going to move the file
