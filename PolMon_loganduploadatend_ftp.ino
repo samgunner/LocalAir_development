@@ -157,6 +157,10 @@ int last_seconds = 0;
 
 /*********************** CONNECTION PARAMETERS ************************/
 WiFiSSLClient client;
+// trying instead the HTTPClient libary to see if that handles reposes a bit 
+// better.
+HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
+
 int status = WL_IDLE_STATUS;
 
 /*********************** Encryption **************************/
@@ -1140,17 +1144,12 @@ int uploadFile(File log_file, const bool sysFile=false) {
 
     // we are going to check to see if connection was successfull
     // and then do something different it it wasn't.
-    bool server_connected = client.connect(server, 443);
+    // SDG 240522 - seeing if we can switch the HTTP libary
+    //bool server_connected = client.connect(server, 443);
 
     // check connection
-    if (server_connected) {
-
-      // the connection was successfull! happy days!
-      char to_log[50];
-      strcpy(to_log, "Successfully connected to:  ");
-      strcat(to_log, server);
-      logAndPrint(to_log);
-
+    //if (server_connected) {
+    if (true) {
       unsigned long fileSize = log_file.size();
   
       int red = 255;
@@ -1166,44 +1165,51 @@ int uploadFile(File log_file, const bool sysFile=false) {
       if (ledStep == 0) {
         ledStep = 1;
       }
-  
-      client.print("POST /");
+
+      httpclient.beginRequest();
+
+      char post_address[50];
+      strcpy(post_address, "/");
       
       if (sysFile) {
-          client.print("la_syslog"); // this is where a new location to send the sysLog file wil go
+          strcat(post_address, "la_syslog"); // this is where a new location to send the sysLog file wil go
       }
       else {
-          client.print("la_data");
+          strcat(post_address, "la_data");
       }
-  
-      client.print("/");
-      client.print(DEVICE_ID);  // we are now including the device ID in the url, so that the
+
+      strcat(post_address, "/");
+      strcat(post_address, DEVICE_ID);  // we are now including the device ID in the url, so that the
                                 // backend knows which key to use for decryption.
-      
-  
-      client.println(" HTTP/1.1");
-      
-      client.print("Host: ");
-      client.println(server);
-      client.print("Content-Length: ");
-      client.println(log_file_size_string);
-      client.println("Content-Type: text/plain");
-      client.println("Connection: close");
-      client.println("");
+
+      char to_log[50];
+      strcpy(to_log, "Uploading to: ");
+      strcat(to_log, post_address);
+      logAndPrint(to_log);
+
+      httpclient.post(post_address);
+
+      httpclient.sendHeader("Content-Length", log_file_size_string);
+      httpclient.sendHeader("Content-Type", "text/plain");
+      //httpclient.sendHeader("Connection", "close");
+
+      httpclient.beginBody();
   
       int i = ledStep;
   
       int fileSizeCount = 0;
-  
+
+      Serial.print("Uploading: ");
       while (log_file.available()) {
         String c = log_file.readString();
         //Serial.print(c);
-        client.print(c);
+        httpclient.print(c);
         //client.print('\n');
   
         i--;
-  
+
         if (i <= 0) {
+          Serial.print(".");
           analogWrite(LED_PIN_R, red--);
           analogWrite(LED_PIN_G, green++);
   
@@ -1215,45 +1221,45 @@ int uploadFile(File log_file, const bool sysFile=false) {
           if (green < 0) green = 0;
         }
       }
-  
-      //logAndPrint("", false);
-      Serial.print("Returned: ");
-      while (client.available()) {
-        String resp = client.read();
-        Serial.print(resp);
-      }
-  
-      
-      logAndPrint("Disconnecting from server");
-      client.stop();
-      
-      
-      logAndPrint("Upload finished, disconnecting from server.");
-      client.stop();
-      
+      Serial.println();
+
+      httpclient.endRequest();
+
+      int statusCode = httpclient.responseStatusCode();
+      char statusCode_string[7];
+      itoa(statusCode, statusCode_string, 10);
+    
+      String httpresponse = httpclient.responseBody();
+
       analogWrite(LED_PIN_R, 0);
       analogWrite(LED_PIN_G, 0);
       analogWrite(LED_PIN_B, 0);
-  
-      //TODO, it would be nice to have some way of checking the uplaod had actually worked....
-      // for now we are just going  to flash happily...
-  
-      statusLED(255,0,255, true, 3);
 
-      // return a zero because things worked
-      return 0;
-    }
-    else {
-      // the connection could not be made
-      char to_log[50];
-      strcpy(to_log, "ERROR, could not connected to:  ");
-      strcat(to_log, server);
-      logAndPrint(to_log);
-      logAndPrint("File upload aborted");
+      Serial.print("Responce: ");
+      Serial.println(httpresponse);
 
-      statusLED(255,0,255, false, 3);
-      // return a zero because things worked
-      return 1;
+      if (statusCode == 200) {
+          char to_log[50];
+          strcpy(to_log, "Upload successful, responce code:");
+          strcat(to_log, statusCode_string);
+          logAndPrint(to_log);
+
+          statusLED(255,0,255, true, 3);
+    
+          // return a zero because things worked
+          return 0;
+      }
+      else {
+        // some status code was recieved that means it didn't work.
+        char to_log[50];
+        strcpy(to_log, "ERROR, upload failed with status code: ");
+        strcat(to_log, statusCode_string);
+        logAndPrint(to_log);
+  
+        statusLED(255,0,255, false, 3);
+        // return a non-zero because things didn't work
+        return 1;
+      }
     }
 }
 

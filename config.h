@@ -35,7 +35,7 @@ String wifi_networks = "{"
 #endif
 
 #include <WiFiNINA.h>
-//#include <ArduinoHttpClient.h>
+#include <ArduinoHttpClient.h>
 
 #define STREAM false // deciding weather to stream the data or not...
 #define ENCRYPT true // flag to weather to encrypt onto the SD card or not
@@ -54,8 +54,8 @@ int line_length = 960;
 
 /* Debugging flags */
 #define DEBUG false  // this turns on and off debug logging
-#define CHECK_GPS_DATETIME false
-#define AUTO_POWER_OFF false
+#define CHECK_GPS_DATETIME true
+#define AUTO_POWER_OFF true
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
 //#define LOG_FILE_NAME_PREFIX "LocalAirData_"
