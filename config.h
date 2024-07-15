@@ -54,7 +54,7 @@ int line_length = 960;
 
 /* Debugging flags */
 #define DEBUG false  // this turns on and off debug logging
-#define CHECK_GPS_DATETIME true
+#define CHECK_GPS_DATETIME false
 #define AUTO_POWER_OFF true
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5

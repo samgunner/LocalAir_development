@@ -38,7 +38,7 @@
 
 // for some reason I need to put a decaration thingy for logAndPrint here... if I don't
 // then it complains that it doesn't exist...
-void logAndPrint(char *message, bool nl=true, bool ts=true);
+void logAndPrint(char message[], bool nl=true, bool ts=true);
 
 /************************ Accelerometer *******************************/
 
@@ -159,7 +159,9 @@ int last_seconds = 0;
 WiFiSSLClient client;
 // trying instead the HTTPClient libary to see if that handles reposes a bit 
 // better.
-HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
+//HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
+// we were doing this here, but we have moved it into the upload function so that 
+// the object gets rebuilt for each upload, in the hope that that removes the errors.
 
 int status = WL_IDLE_STATUS;
 
@@ -200,7 +202,12 @@ void setup() {
   while(!accel.begin())
   {
     /* There was a problem detecting the ADXL343 ... check your connections */
-    logAndPrint("No ADXL343 accelerometer detected");
+    char to_log[50];
+    strcpy(to_log, "No ADXL343 accelerometer detected");
+    //String logstr = "No ADXL343 accelerometer detected";
+    //const char *logstr_c = logstr.c_str();
+    //logAndPrint(&logstr[0]);
+    logAndPrint(to_log);
     statusLED(255,255,0,false,1);
   }
   // if we get this far then the accelerometer has been detected.
@@ -233,9 +240,12 @@ void setup() {
   accel.writeRegister(0x27, 0xE0);
   accel.writeRegister(0x1D, 0xFF);
 
-  logAndPrint("ADXL343 accelerometer init complete");
+  {
+  char to_log[50];
+  strcpy(to_log, "ADXL343 accelerometer init complete");
+  logAndPrint(to_log);
   statusLED(255,255,0,true,1);
-
+  }
   /*********************** SD Card Setup ************************/
 
   Serial.print("Initializing SD card...");
@@ -275,9 +285,22 @@ void setup() {
   }
 
   // writing a start up message
-  logAndPrint("======================================");
-  logAndPrint("Starting LocalAir Polultion Monitoring");
-  logAndPrint(DEVICE_ID);
+  
+  {
+  char to_log[50];
+  strcpy(to_log, "======================================");
+  logAndPrint(to_log);
+  }
+  {
+  char to_log[50];
+  strcpy(to_log, "Starting LocalAir Polultion Monitoring");
+  logAndPrint(to_log);
+  }
+  {
+  char to_log[50];
+  strcpy(to_log, DEVICE_ID);
+  logAndPrint(to_log);
+  }
 
   /*********************** WIFI CONNECTION  ************************/
 
@@ -285,7 +308,9 @@ void setup() {
       wifiSetUp();
   }
   else {
-      logAndPrint("Not streaming, skipping WiFi Setup");
+      char to_log[50];
+      strcpy(to_log, "Not streaming, skipping WiFi Setup");
+      logAndPrint(to_log);
   }
 
   /*********************** Setup sensors ************************/
@@ -356,7 +381,9 @@ void setup() {
    */
   if (CHECK_GPS_DATETIME) {
     if (GPS.year == 80 && !STREAM) {
-      logAndPrint("GPS clock not set, shutting down");
+      char to_log[50];
+      strcpy(to_log, "GPS clock not set, shutting down");
+      logAndPrint(to_log);
       statusLED(0,255,125,false,5);
       powerOff();
     }
@@ -402,7 +429,9 @@ void setup() {
   }
 
   if (ENCRYPT) {
-    logAndPrint("ENCRYPT flag is set, log file will be encrypted");
+    char to_log[50];
+    strcpy(to_log, "ENCRYPT flag is set, log file will be encrypted");
+    logAndPrint(to_log);
   }
 
 }
@@ -429,7 +458,6 @@ void loop() {
   // The FFT setup
   float fft_val;
   int fft_count;
-  bool fft_available;
   // we are going to grab the FFT on every loop, but only print the data when the rest of the
   // sensors are read. It's not pretty, but I can't be sure that the data won't back up if 
   // don't do this. The device seems to have more than enough power to do this without worry.
@@ -454,7 +482,7 @@ void loop() {
   /*********************** JSON Object Creation ********************/
 
   // create the json object that we are going to store data to
-  StaticJsonDocument<1024> thisdata;
+  JsonDocument thisdata;
   JsonObject root = thisdata.to<JsonObject>();
 
   /*********************** Construct datetime ********************/
@@ -471,15 +499,14 @@ void loop() {
   /*********************** Construct location ********************/
 
   // the root of GPS json object
-  JsonObject json_gps = root.createNestedObject("GPS");
+  JsonObject json_gps = root["GPS"].to<JsonObject>();
 
   if (GPS.fix) {
       statusLED(1,50,32,true,1);
       json_gps["fix"] = "True";
-      JsonObject json_location = json_gps.createNestedObject("location");
-      json_location["lat"] = GPS.latitude;
-      json_location["long"] = GPS.longitude;
-      json_location["alt"] = GPS.altitude;
+      json_gps["location"]["lat"] = GPS.latitude;
+      json_gps["location"]["long"] = GPS.longitude;
+      json_gps["location"]["alt"] = GPS.altitude;
 
       json_gps["speed"] = GPS.speed;
       json_gps["angle"] = GPS.angle;
@@ -489,10 +516,9 @@ void loop() {
       statusLED(1,50,32,false,1);
       // If there is any hope if this being passable as a csv we have the fields the same
       json_gps["fix"] = "False";
-      JsonObject json_location = json_gps.createNestedObject("location");
-      json_location["lat"] = "-";
-      json_location["long"] = "-";
-      json_location["alt"] = "-";
+      json_gps["location"]["lat"] = "-";
+      json_gps["location"]["long"] = "-";
+      json_gps["location"]["alt"] = "-";
 
       json_gps["speed"] = "-";
       json_gps["angle"] = "-";
@@ -502,7 +528,7 @@ void loop() {
   /*********************** Get and store DHT Data ********************/
 
   // the root of DHT json object
-  JsonObject json_dht = root.createNestedObject("DHT");
+  JsonObject json_dht = root["DHT"].to<JsonObject>();
     
   // Reading temperature or humidity takes about 250 milliseconds!
   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
@@ -530,35 +556,35 @@ void loop() {
   /*********************** Get and store MultiGas Data ********************/
 
   // the root of DHT json object
-  JsonObject json_multigas = root.createNestedObject("MultiGas");
+  //JsonObject json_multigas = root.createNestedObject("MultiGas");
 
   // Now reading in the MultiGas sensor readings
 
-  json_multigas["no2"] = gas.measure_NO2();
-  json_multigas["c2h5ch"] = gas.measure_C2H5OH();
-  json_multigas["voc"] = gas.measure_VOC();
-  json_multigas["co"] = gas.measure_CO();
+  root["MultiGas"]["no2"] = gas.measure_NO2();
+  root["MultiGas"]["c2h5ch"] = gas.measure_C2H5OH();
+  root["MultiGas"]["voc"] = gas.measure_VOC();
+  root["MultiGas"]["co"] = gas.measure_CO();
 
   /*********************** Get and store PM Data ********************/
 
   // the root of DHT json object
-  JsonObject json_pms = root.createNestedObject("PM_Sensor");
+  //JsonObject json_pms = root.createNestedObject("PM_Sensor");
 
-  JsonObject json_ae = json_pms.createNestedObject("atmos_enviro");
+  //JsonObject json_ae = json_pms.createNestedObject("atmos_enviro");
 
-  json_ae["AE_1.0"] = psmdata.PM_AE_UG_1_0;
-  json_ae["AE_2.5"] = psmdata.PM_AE_UG_2_5;
-  json_ae["AE_10.0"] = psmdata.PM_AE_UG_10_0;
+  root["PM_Sensor"]["atmos_enviro"]["AE_1.0"] = psmdata.PM_AE_UG_1_0;
+  root["PM_Sensor"]["atmos_enviro"]["AE_2.5"] = psmdata.PM_AE_UG_2_5;
+  root["PM_Sensor"]["atmos_enviro"]["AE_10.0"] = psmdata.PM_AE_UG_10_0;
 
   /*********************** Get and store FFT Data ********************/ 
 
   // the root of the FFT json object
-  JsonArray json_fft = root.createNestedArray("FFT");
+  //JsonArray json_fft = root.createNestedArray("FFT");
 
   // we are just going to save the fft data into an array
   for (fft_count=0; fft_count<40; fft_count++) {
     fft_val = lastFFT[fft_count];
-    json_fft.add(round2(fft_val*1000));
+    root["FFT"].add(round2(fft_val*1000));
   }
 
   /*********************** Printing to Serial ********************/
@@ -578,7 +604,7 @@ void loop() {
   /*********************** Printing to File ********************/
   if (ENCRYPT) {
     // a buffer for the plain text block
-    byte bytePlanebuffer[16];
+    byte bytePlanebuffer[17];
     
     // two duffers for the encrypted data
     byte encryptedText[line_length];
@@ -587,7 +613,7 @@ void loop() {
     int specKeySize = SPECKKEYSIZE;
 
     // we now run through the line, encrupting it one 16 byte block at a time.
-    unsigned int i;
+    int i;
     for (i=0; i<(line_length/16); i++) {
       memcpy(&bytePlanebuffer, &deserialized[i*16], 16);
  
@@ -597,8 +623,8 @@ void loop() {
     }
     // I've decided that I am going to save the file in ascii encoded hex, 
     // which of course doubles its size... but that's ok
-    for(i=0; i<sizeof(encryptedText); i++){
-       char hexChar[2];
+    for(i=0; i< (int) sizeof(encryptedText); i++){
+       char hexChar[3];
        // cast the byte into hex
        sprintf(hexChar, "%02X", encryptedText[i]);
        // and write it to the file
@@ -647,13 +673,17 @@ void loop() {
           AudioNoInterrupts();
 
           if (DEBUG) {
-            logAndPrint("Debug - about to close log file");
+            char to_log[50];
+            strcpy(to_log, "Debug - about to close log file");
+            logAndPrint(to_log);
           }
 
           myFile.close();
 
           if (DEBUG) {
-            logAndPrint("Debug - log file closed");
+            char to_log[50];
+            strcpy(to_log, "Debug - log file closed");
+            logAndPrint(to_log);
           }
 
           // we're going to try and upload all the files!... how exiting
@@ -666,23 +696,31 @@ void loop() {
           File filesRoot = SD.open("/");
 
           if (DEBUG) {
-            logAndPrint("Debug - opening SD card root");
+            char to_log[50];
+            strcpy(to_log, "Debug - opening SD card root");
+            logAndPrint(to_log);
           }
 
           while (true) {
             if (DEBUG) {
-              logAndPrint("Debug - about to open Next File");
+              char to_log[50];
+              strcpy(to_log, "Debug - about to open Next File");
+              logAndPrint(to_log);
             }
 
             File log_file = filesRoot.openNextFile();
             
             if (DEBUG) {
-              logAndPrint("Debug - opened Next File");
+              char to_log[50];
+              strcpy(to_log, "Debug - opened Next File");
+              logAndPrint(to_log);
             }
             
             if (! log_file ) {
               if (DEBUG) {
-                logAndPrint("Debug - No more files, breaking loop");
+                char to_log[50];
+                strcpy(to_log, "Debug - No more files, breaking loop");
+                logAndPrint(to_log);
               }
 
               break;
@@ -691,7 +729,9 @@ void loop() {
             // don't upload the system log file stragiht away.
             if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
               if (DEBUG) {
-                logAndPrint("Debug - SysLog found, skipping");
+                char to_log[50];
+                strcpy(to_log, "Debug - SysLog found, skipping");
+                logAndPrint(to_log);
               }
 
               continue;
@@ -700,7 +740,9 @@ void loop() {
             // check to see if it is the archive directory, and if so move on.
             if (log_file.isDirectory()) {
               if (DEBUG) {
-                logAndPrint("Debug - directory found, skipping");
+                char to_log[50];
+                strcpy(to_log, "Debug - directory found, skipping");
+                logAndPrint(to_log);
               }
 
               continue;
@@ -731,7 +773,7 @@ void loop() {
             delay(fileFlashDelay);
           }
 
-          char numFiles_s[6];
+          char numFiles_s[11];
           sprintf(numFiles_s, "%d", numFiles);
           char to_log[100];
           strcpy(to_log, numFiles_s);
@@ -799,7 +841,7 @@ void loop() {
               }
               else {
   
-                char log_file_name[] = {log_file.name()};
+                const char* log_file_name = log_file.name();
                 
                 log_file.close();
                 
@@ -816,7 +858,11 @@ void loop() {
           // we can't, as yet, tell if the file upload was a success, and so we are 
           // going to have to just shut down and hope for the best
           
-          logAndPrint("All Data files uploaded");
+          {
+          char to_log[50];
+          strcpy(to_log, "All Data files uploaded");
+          logAndPrint(to_log);
+          }
 
           // need to post to the sys log file, and then close and reopen it for reading
           to_log[0] = '\0';
@@ -870,7 +916,9 @@ void loop() {
         // if the activity counter has got to zero then turn off
         if (activity_counter < 1) {
 
-          logAndPrint("No movement Detected for 5 minutes, switching off");
+          char to_log[100];
+          strcpy(to_log, "No movement Detected for 5 minutes, switching off");
+          logAndPrint(to_log);
 
           sysLogFile.close();
           myFile.close();
@@ -888,8 +936,8 @@ void loop() {
 
 // This replaces the normal delay function, producing a rainbow on teh LED while 
 // for a given duration in miliseconds
-void rainbowLED(int dur) {
-    long start_time = millis();
+void rainbowLED(unsigned int dur) {
+    unsigned start_time = millis();
     int rainbow_delay = 1;
     
     analogWrite(LED_PIN_R, 255);
@@ -974,13 +1022,13 @@ void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times) {
 // they can still go to the log/Serial, you just need to turn off the times stamp and new line 
 // for all except the begining and end respectively.
 // should work??
-void logAndPrint(char *message, bool nl=true, bool ts=true) {
+void logAndPrint(char message[], bool nl, bool ts) {
 
     char to_log[100];
 
     if (ts) {
       char millis_s[12];
-      sprintf(millis_s, "%010d", millis());
+      sprintf(millis_s, "%010lu", millis());
 
       strcpy(to_log, millis_s);
 
@@ -1050,20 +1098,28 @@ int wifiSetUp() {
       } while ((status != WL_CONNECTED)  && (i > 1));
       
       if (status == WL_CONNECTED) {
-        logAndPrint("WiFi Connected");
+        char to_log[50];
+        strcpy(to_log, "WiFi Connected");
+        logAndPrint(to_log);
         statusLED(255,255,255,true,3);
         // print the status to the log
         if (DEBUG) {
-            logAndPrint("Debug - about to print wifi status");
+            char to_log[50];
+            strcpy(to_log, "Debug - about to print wifi status");
+            logAndPrint(to_log);
           }
         printWifiStatus();
         if (DEBUG) {
-            logAndPrint("Debug - printed wifi status");
+            char to_log[50];
+            strcpy(to_log, "Debug - printed wifi status");
+            logAndPrint(to_log);
         }
         return WL_CONNECTED;
       }
       else {
-        logAndPrint("WiFi could not connect, aborting connection");
+        char to_log[50];
+        strcpy(to_log, "WiFi could not connect, aborting connection");
+        logAndPrint(to_log);
         statusLED(255,255,255,false,3);
         return WL_CONNECTED;
       }
@@ -1126,10 +1182,8 @@ String IpAddress2String(const IPAddress& ipAddress)
 }
 
 // a function for uploading the data file to the server
-int uploadFile(File log_file, const bool sysFile=false) {
+int uploadFile(File log_file, const bool sysFile) {
     // we are now going to upload to James's server, using SSL of all things
-
-    char server[] = HTTPS_SERVER;
 
     char log_file_size_string[7];
     itoa(log_file.size(), log_file_size_string, 10);
@@ -1166,6 +1220,9 @@ int uploadFile(File log_file, const bool sysFile=false) {
         ledStep = 1;
       }
 
+      // now recreating the HttpClient Object for each upload.
+      HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
+
       httpclient.beginRequest();
 
       char post_address[50];
@@ -1182,14 +1239,17 @@ int uploadFile(File log_file, const bool sysFile=false) {
       strcat(post_address, DEVICE_ID);  // we are now including the device ID in the url, so that the
                                 // backend knows which key to use for decryption.
 
+      
       char to_log[50];
       strcpy(to_log, "Uploading to: ");
       strcat(to_log, post_address);
       logAndPrint(to_log);
+      
 
       httpclient.post(post_address);
 
-      httpclient.sendHeader("Content-Length", log_file_size_string);
+      //httpclient.sendHeader("Content-Length", log_file_size_string);
+      httpclient.sendHeader("Content-Length", 100);
       httpclient.sendHeader("Content-Type", "text/plain");
       //httpclient.sendHeader("Connection", "close");
 
@@ -1201,10 +1261,16 @@ int uploadFile(File log_file, const bool sysFile=false) {
 
       Serial.print("Uploading: ");
       while (log_file.available()) {
-        String c = log_file.readString();
-        //Serial.print(c);
-        httpclient.print(c);
+        char this_line[line_length*2+1];
+        log_file.read(this_line, line_length*2+1);
+        Serial.print("this_line: ");
+        Serial.print(this_line);
+        Serial.println();
+        httpclient.print(this_line);
         //client.print('\n');
+
+        // trying to count the amount of data that has been uploaded
+        fileSizeCount = fileSizeCount + line_length*2+1;
   
         i--;
 
@@ -1225,6 +1291,17 @@ int uploadFile(File log_file, const bool sysFile=false) {
 
       httpclient.endRequest();
 
+      {
+      // printing to the length of uploaded data to the log
+      char fileSizeCount_str[8];
+      itoa(fileSizeCount, fileSizeCount_str, 10);
+      char to_log[50];
+      strcpy(to_log, "Number of Bytes Uploaded: ");
+      strcat(to_log, fileSizeCount_str);
+      logAndPrint(to_log);
+      }
+
+      // printing the http status code.
       int statusCode = httpclient.responseStatusCode();
       char statusCode_string[7];
       itoa(statusCode, statusCode_string, 10);
@@ -1307,7 +1384,9 @@ int copyFile(File log_file) {
     logAndPrint(to_log);
   }
   else {
-    logAndPrint("Warning - archive file did not open");
+    char to_log[50];
+    strcpy(to_log, "Warning - archive file did not open");
+    logAndPrint(to_log);
   }
 
   // more the begining of the original file
