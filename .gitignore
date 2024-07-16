@@ -1,2 +1,6 @@
-secrets.h
-.DS_Store
+# Global ignores for the repo
+# (check sub-driectories for other specificly-ignored files)
+.ipynb_checkpoints/
+__pycache__/
+.vscode/
+.DS_Store/

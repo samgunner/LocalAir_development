@@ -1,0 +1,15 @@
+/*
+ * The LED Colour Codes
+ * 
+ * Yellow - Accelerometer - RED = not detected, GREEN = successfully configured
+ * White - WiFi - RED = found a known network but couldn't connect, GREEN = connected
+ * Pink - WiFi - RED = no known networks found
+ * Blue - SD  Card - RED = failed to initialise SD Card, GREEN = SD Card initialised.
+ * Teal (0,255,125) - Time - RED = Time not set on GPS.
+ * Flint (75,75,125) - File - RED = data log file didn't open, GREEN = data log file open
+ * Brown (165,42,42) - System Log File - RED = could not be opened, GREEN = Opened successfully
+ * Fuchsia (255,0,255) - Log File - GREEN = successfully uploaded... probably
+ * Gold (255,215,0) - Success - GREEN = we think we have uploaded a log file and are shutting down
+ * Silver (192,192,192) - Not quite Success - GREEN = we have detected prolonged inactivity and are shutting down
+ * Dark Green (1,50,32) - GPS = GREEN - fix aquired, RED = No Fix
+ */
