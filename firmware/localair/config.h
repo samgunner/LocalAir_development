@@ -1,22 +1,9 @@
 /*
- * The deinitions that go with the LocalAir Software
+ * The definitions that go with the LocalAir Software
  */
 
-/*
- * Below is the declaration of a string that will be converted into a dict
- * of the wifi networks that we're able to access.
- */
-String wifi_networks = "{"
-  "\"Juice4Jesus\" : \"J3w5forGingers\","
-  "\"Harp Controller\" : \"harpaccess\","
-  "\"LocalAir Project\" : \"BikesAreBetter\","
-  "\"Scooter Demo\" : \"BikesAreBetter\","
-  "\"BTB-PSCHGC\" : \"N9Pdfgpnh6DPRH\","
-  "\"Fire Flower\" : \"b57f23aa6047\""
-"}";
 
 // Upload Server details
-// This uploads to Sam's hostgater server
 #define HTTPS_SERVER "london.localair.uk"
 
 /*
