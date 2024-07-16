@@ -1188,6 +1188,10 @@ int uploadFile(File log_file, const bool sysFile) {
     char log_file_size_string[7];
     itoa(log_file.size(), log_file_size_string, 10);
     
+    Serial.print("NOT LOGGED - File size: ");
+    Serial.print(log_file.size());
+    Serial.println();
+
     char to_log[50];
     strcpy(to_log, "Attempting to upload ");
     strcat(to_log, log_file.name());
@@ -1227,8 +1231,8 @@ int uploadFile(File log_file, const bool sysFile) {
 
       char post_address[50];
       strcpy(post_address, "/");
-      
-      if (sysFile) {
+
+      if (sysFile || true) {
           strcat(post_address, "la_syslog"); // this is where a new location to send the sysLog file wil go
       }
       else {
@@ -1248,8 +1252,8 @@ int uploadFile(File log_file, const bool sysFile) {
 
       httpclient.post(post_address);
 
-      //httpclient.sendHeader("Content-Length", log_file_size_string);
-      httpclient.sendHeader("Content-Length", 100);
+      httpclient.sendHeader("Content-Length", log_file.size());
+      //httpclient.sendHeader("Content-Length", 100);
       httpclient.sendHeader("Content-Type", "text/plain");
       //httpclient.sendHeader("Connection", "close");
 
@@ -1261,6 +1265,7 @@ int uploadFile(File log_file, const bool sysFile) {
 
       Serial.print("Uploading: ");
       while (log_file.available()) {
+        /*
         char this_line[line_length*2+1];
         log_file.read(this_line, line_length*2+1);
         Serial.print("this_line: ");
@@ -1268,9 +1273,13 @@ int uploadFile(File log_file, const bool sysFile) {
         Serial.println();
         httpclient.print(this_line);
         //client.print('\n');
+        */
+        auto line = log_file.readStringUntil('\n');
+        httpclient.println(line);
 
         // trying to count the amount of data that has been uploaded
-        fileSizeCount = fileSizeCount + line_length*2+1;
+        //fileSizeCount = fileSizeCount + line_length*2+1;
+        fileSizeCount += line.length() + 1;
   
         i--;
 
@@ -1288,7 +1297,9 @@ int uploadFile(File log_file, const bool sysFile) {
         }
       }
       Serial.println();
-
+      for(int i = 0; i<1000; i++) {
+         httpclient.println('.');
+      }
       httpclient.endRequest();
 
       {
