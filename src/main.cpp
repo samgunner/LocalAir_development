@@ -180,6 +180,8 @@ void powerOff();
 void printWifiStatus();
 int uploadFile(File log_file, const bool sysFile = false);
 int copyFile(File log_file);
+String IpAddress2String(const IPAddress &ipAddress);
+double round2(double value);
 
 void setup() {
     delay(1000);
