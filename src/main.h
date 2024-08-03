@@ -80,16 +80,30 @@ int activity_counter = INACTIVITY_TIMEOUT;
 // Functions defined in main.cpp
 // ****************************************************************************
 
-String makeLogFileName();
-String getDateTime();
 void rainbowLED(unsigned int dur);
 void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times);
-void logAndPrint(char message[], bool nl = true, bool ts = true);
-void speckEncrypt(BlockCipher *cipher, size_t keySize, byte *encOutput, byte *encInput);
+
+// Print messsage to the serial console and the syslog file
+void syslog(const char message[]);
+void syslog(String message) {
+    syslog(message.c_str());
+};
+
 int wifiSetUp();
 void powerOff();
 void printWifiStatus();
 int uploadFile(File log_file, const bool sysFile = false);
 int copyFile(File log_file);
 String IpAddress2String(const IPAddress &ipAddress);
+
+// Return a logfile name using the current date and time from the GPS sensor
+String get_logfile_name();
+
+// Return a formatted current date and time from the GPS sensor
+String get_datetime();
+
+// Encrypt a block of text
+void speck_encrypt(BlockCipher *cipher, size_t key_size, byte *encrypted_output, byte *unencrypted_input);
+
+// Round a number to 2 decimal places
 double round2(double value);

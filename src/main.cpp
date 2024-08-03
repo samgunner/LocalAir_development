@@ -15,6 +15,12 @@
 
 #include "main.h"
 
+#ifdef DEBUG
+#define debug_syslog(x) syslog(x)
+#else
+#define debug_syslog(x) // No operation
+#endif
+
 /*********************** Audio Set up ************************/
 
 // Create the Audio components for the FFT.  These should be created in the
@@ -91,12 +97,7 @@ void setup() {
     /* Initialise the sensor */
     while (!accel.begin()) {
         /* There was a problem detecting the ADXL343 ... check your connections */
-        char to_log[50];
-        strcpy(to_log, "No ADXL343 accelerometer detected");
-        // String logstr = "No ADXL343 accelerometer detected";
-        // const char *logstr_c = logstr.c_str();
-        // logAndPrint(&logstr[0]);
-        logAndPrint(to_log);
+        syslog("No ADXL343 accelerometer detected");
         statusLED(255, 255, 0, false, 1);
     }
     // if we get this far then the accelerometer has been detected.
@@ -128,12 +129,8 @@ void setup() {
     accel.writeRegister(0x27, 0xE0);
     accel.writeRegister(0x1D, 0xFF);
 
-    {
-        char to_log[50];
-        strcpy(to_log, "ADXL343 accelerometer init complete");
-        logAndPrint(to_log);
-        statusLED(255, 255, 0, true, 1);
-    }
+    syslog("ADXL343 accelerometer init complete");
+    statusLED(255, 255, 0, true, 1);
     /*********************** SD Card Setup ************************/
 
     Serial.print("Initializing SD card...");
@@ -173,31 +170,9 @@ void setup() {
 
     // writing a start up message
 
-    {
-        char to_log[50];
-        strcpy(to_log, "======================================");
-        logAndPrint(to_log);
-    }
-    {
-        char to_log[50];
-        strcpy(to_log, "Starting LocalAir Polultion Monitoring");
-        logAndPrint(to_log);
-    }
-    {
-        char to_log[50];
-        strcpy(to_log, DEVICE_ID);
-        logAndPrint(to_log);
-    }
-
-    /*********************** WIFI CONNECTION  ************************/
-
-    if (STREAM) {
-        wifiSetUp();
-    } else {
-        char to_log[50];
-        strcpy(to_log, "Not streaming, skipping WiFi Setup");
-        logAndPrint(to_log);
-    }
+    syslog("======================================");
+    syslog("Starting LocalAir Polultion Monitoring");
+    syslog(DEVICE_ID);
 
     /*********************** Setup sensors ************************/
 
@@ -259,10 +234,8 @@ void setup() {
      *  If that is the case we just shutdown.
      */
     if (CHECK_GPS_DATETIME) {
-        if (GPS.year == 80 && !STREAM) {
-            char to_log[50];
-            strcpy(to_log, "GPS clock not set, shutting down");
-            logAndPrint(to_log);
+        if (GPS.year == 80) {
+            syslog("GPS clock not set, shutting down");
             statusLED(0, 255, 125, false, 5);
             powerOff();
         }
@@ -270,18 +243,15 @@ void setup() {
 
     // save gps datetime to the syslog so that it can be compared with syslog times
     // although this means that it might be converterd into a char array first.
-    String datetime_s = getDateTime();
+    String datetime_s = get_datetime();
     int datetime_l = datetime_s.length() + 1;
     char datetime_c[datetime_l];
     datetime_s.toCharArray(datetime_c, datetime_l);
 
-    char to_log[50];
-    strcpy(to_log, "GPS clock is set to: ");
-    strcat(to_log, datetime_c);
-    logAndPrint(to_log);
+    syslog(String("GPS clock is set to: ") + datetime_c);
 
     // set the log file name
-    log_file_name = makeLogFileName();
+    log_file_name = get_logfile_name();
 
     // also as a char array...
     char log_file_name_ca[log_file_name.length()];
@@ -294,22 +264,15 @@ void setup() {
 
     // check to see if the file opened ok!
     if (myFile) {
-        char to_log[50];
-        strcpy(to_log, "Created log file: ");
-        strcat(to_log, log_file_name_ca);
-        logAndPrint(to_log);
+        syslog(String("Created log file: ") + log_file_name_ca);
         statusLED(75, 75, 125, true, 2);
     } else {
-        char to_log[50];
-        strcpy(to_log, "Error - Count not create log file: ");
-        strcat(to_log, log_file_name_ca);
+        syslog(String("Error - Count not create log file: ") + log_file_name_ca);
         statusLED(75, 75, 125, false, 10);
     }
 
     if (ENCRYPT) {
-        char to_log[50];
-        strcpy(to_log, "ENCRYPT flag is set, log file will be encrypted");
-        logAndPrint(to_log);
+        syslog("ENCRYPT flag is set, log file will be encrypted");
     }
 }
 
@@ -364,7 +327,7 @@ void loop() {
         /*********************** Construct datetime ********************/
 
         // construct the GPS datetime... you feel there must be better way of doing this...
-        String datetime = getDateTime();
+        String datetime = get_datetime();
 
         // adding datetime values to the json obj
         // moving the datetime to root, and off of the GPS.
@@ -489,7 +452,7 @@ void loop() {
             for (i = 0; i < (line_length / 16); i++) {
                 memcpy(&bytePlanebuffer, &deserialized[i * 16], 16);
 
-                speckEncrypt(&speck, specKeySize, encryptedbuffer, bytePlanebuffer);
+                speck_encrypt(&speck, specKeySize, encryptedbuffer, bytePlanebuffer);
 
                 memcpy(&encryptedText[i * 16], &encryptedbuffer, 16);
             }
@@ -512,23 +475,6 @@ void loop() {
             myFile.flush();
         }
 
-        /*********************** POSTing ********************/
-
-        if (STREAM) {
-            // TODO this doesn't work at the moment
-            Serial.print("POSTing -> ");
-            String contentType = "application/json";
-
-            // client.setHttpResponseTimeout(1000);
-
-            digitalWrite(4, HIGH);
-            // client.post("/measurement_upload", contentType, deserialized_for_post);
-
-            // read the status code and body of the response
-            // int statusCodePOST = client.responseStatusCode();
-            // String responsePOST = client.responseBody();
-        }
-
         /*********************** CHECK TIME, THEN WIFI AND UPLOAD ********************/
 
         if (GPS.seconds < last_seconds) {
@@ -539,19 +485,11 @@ void loop() {
                 // trying to diable the FFT to see if this stops some of the funny behaviour
                 AudioNoInterrupts();
 
-                if (DEBUG) {
-                    char to_log[50];
-                    strcpy(to_log, "Debug - about to close log file");
-                    logAndPrint(to_log);
-                }
+                debug_syslog("Debug - about to close log file");
 
                 myFile.close();
 
-                if (DEBUG) {
-                    char to_log[50];
-                    strcpy(to_log, "Debug - log file closed");
-                    logAndPrint(to_log);
-                }
+                debug_syslog("Debug - log file closed");
 
                 // we're going to try and upload all the files!... how exiting
 
@@ -562,56 +500,29 @@ void loop() {
 
                 File filesRoot = SD.open("/");
 
-                if (DEBUG) {
-                    char to_log[50];
-                    strcpy(to_log, "Debug - opening SD card root");
-                    logAndPrint(to_log);
-                }
+                debug_syslog("Debug - opening SD card root");
 
                 while (true) {
-                    if (DEBUG) {
-                        char to_log[50];
-                        strcpy(to_log, "Debug - about to open Next File");
-                        logAndPrint(to_log);
-                    }
+                    debug_syslog("Debug - about to open Next File");
 
                     File log_file = filesRoot.openNextFile();
 
-                    if (DEBUG) {
-                        char to_log[50];
-                        strcpy(to_log, "Debug - opened Next File");
-                        logAndPrint(to_log);
-                    }
+                    debug_syslog("Debug - opened Next File");
 
                     if (!log_file) {
-                        if (DEBUG) {
-                            char to_log[50];
-                            strcpy(to_log, "Debug - No more files, breaking loop");
-                            logAndPrint(to_log);
-                        }
-
+                        debug_syslog("Debug - No more files, breaking loop");
                         break;
                     }
 
                     // don't upload the system log file stragiht away.
                     if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
-                        if (DEBUG) {
-                            char to_log[50];
-                            strcpy(to_log, "Debug - SysLog found, skipping");
-                            logAndPrint(to_log);
-                        }
-
+                        debug_syslog("Debug - SysLog found, skipping");
                         continue;
                     }
 
                     // check to see if it is the archive directory, and if so move on.
                     if (log_file.isDirectory()) {
-                        if (DEBUG) {
-                            char to_log[50];
-                            strcpy(to_log, "Debug - directory found, skipping");
-                            logAndPrint(to_log);
-                        }
-
+                        debug_syslog("Debug - directory found, skipping");
                         continue;
                     }
 
@@ -640,12 +551,7 @@ void loop() {
                     delay(fileFlashDelay);
                 }
 
-                char numFiles_s[11];
-                sprintf(numFiles_s, "%d", numFiles);
-                char to_log[100];
-                strcpy(to_log, numFiles_s);
-                strcat(to_log, " to be uploaded");
-                logAndPrint(to_log);
+                syslog(String(numFiles) + " to be uploaded");
 
                 filesRoot.close();
 
@@ -680,39 +586,21 @@ void loop() {
                         // on the SD card.
                         if (copyFile(log_file) == 0) {
                             // this means the copy worked and so we can delete the file
-                            // String log_file_name_s = (String)log_file.name();
-                            // int log_file_name_sl = log_file_name_s.length() + 1;
-                            char log_file_name[30];
-
-                            strcpy(log_file_name, log_file.name());
-
-                            Serial.println(log_file_name); // <- for some reason it stops working when I remvoe this!!
+                            Serial.println(log_file.name()); // <- for some reason it stops working when I remvoe this
 
                             // close and delete the log file
                             log_file.close();
-                            SD.remove(log_file_name);
+                            SD.remove(log_file.name());
 
                             // check to see if it deleted ok
-                            if (SD.exists(log_file_name)) {
-                                char to_log[100];
-                                strcpy(to_log, "Warning - could not delete ");
-                                strcat(to_log, log_file_name);
-                                logAndPrint(to_log);
+                            if (SD.exists(log_file.name())) {
+                                syslog(String("Warning - could not delete ") + log_file.name());
                             } else {
-                                char to_log[100];
-                                strcpy(to_log, "Successfully deleted ");
-                                strcat(to_log, log_file_name);
-                                logAndPrint(to_log);
+                                syslog(String("Successfully deleted ") + log_file.name());
                             }
                         } else {
-                            const char *log_file_name = log_file.name();
-
                             log_file.close();
-
-                            char to_log[100];
-                            strcpy(to_log, "Warning - could not copy ");
-                            strcat(to_log, log_file_name);
-                            logAndPrint(to_log);
+                            syslog(String("Warning - could not copy ") + log_file.name());
                         }
                     }
 
@@ -722,22 +610,11 @@ void loop() {
                 // we can't, as yet, tell if the file upload was a success, and so we are
                 // going to have to just shut down and hope for the best
 
-                {
-                    char to_log[50];
-                    strcpy(to_log, "All Data files uploaded");
-                    logAndPrint(to_log);
-                }
+                syslog("All Data files uploaded");
 
                 // need to post to the sys log file, and then close and reopen it for reading
-                to_log[0] = '\0';
-                strcpy(to_log, SYSTEM_LOG_FILE_NAME);
-                strcat(to_log, " will now be uploaded, after which the system will shutdown");
-                // this is going in a different function so that I can point it somewhere else
-                // in future.
-                logAndPrint(to_log);
-
-                sysLogFile.close();
-
+                syslog(String(SYSTEM_LOG_FILE_NAME) + " will now be uploaded, after which the system will shutdown");
+                sysLogFile.close(); // TODO: Just seek(0) ?
                 sysLogFile = SD.open(SYSTEM_LOG_FILE_NAME, FILE_READ);
 
                 int upload_status = uploadFile(sysLogFile, true);
@@ -776,9 +653,7 @@ void loop() {
 
             // if the activity counter has got to zero then turn off
             if (activity_counter < 1) {
-                char to_log[100];
-                strcpy(to_log, "No movement Detected for 5 minutes, switching off");
-                logAndPrint(to_log);
+                syslog("No movement Detected for 5 minutes, switching off");
 
                 sysLogFile.close();
                 myFile.close();
@@ -870,37 +745,16 @@ void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times) {
     analogWrite(LED_PIN_B, 0);
 }
 
-// A function that will both print messsages to serial and log them to
-// the system log file
-// I've had to zoop it up a bit, so there are now two config perameters,
-// if nl is set to false then no new line is printed to the log file or the serial
-// if ts is set to false then no timestamp (or the " - ") will be appended to the front
-// the idea is that in situations where messages are recieved one character at a time
-// they can still go to the log/Serial, you just need to turn off the times stamp and new line
-// for all except the begining and end respectively.
-// should work??
-void logAndPrint(char message[], bool nl, bool ts) {
-    char to_log[100];
+// Print messsage to the serial console and the syslog file
+void syslog(const char message[]) {
+    char millis_s[14];
+    sprintf(millis_s, "%010lu - ", millis());
+    Serial.print(millis_s);
+    sysLogFile.write(millis_s);
 
-    if (ts) {
-        char millis_s[12];
-        sprintf(millis_s, "%010lu", millis());
-
-        strcpy(to_log, millis_s);
-
-        strcat(to_log, " - ");
-    }
-
-    strcat(to_log, message);
-
-    sysLogFile.write(to_log);
-    Serial.print(to_log);
-
-    if (nl) {
-        Serial.println();
-        sysLogFile.write('\n');
-    }
-
+    Serial.println(message);
+    sysLogFile.write(message);
+    sysLogFile.write('\n');
     sysLogFile.flush();
 }
 
@@ -928,16 +782,8 @@ int wifiSetUp() {
         pass_s.toCharArray(pass, pass_s.length() + 1);
 
         if (wifiNetworks(ssid)) {
-            char to_log[60];
-            char numSsid_s[6];
-            itoa(numSsid, numSsid_s, 10);
-            strcpy(to_log, numSsid_s);
-            strcat(to_log, " networks found, including ");
-            strcat(to_log, ssid);
-            strcat(to_log, " trying to connect.");
-            logAndPrint(to_log);
-
-            // Serial.println(to_log);
+            syslog(String(numSsid) + " networks found, including " +
+                   ssid + " trying to connect.");
 
             // try and connect to the matching network we have found
             // we are going to stop after a given number of attempts,
@@ -952,27 +798,15 @@ int wifiSetUp() {
             } while ((status != WL_CONNECTED) && (i > 1));
 
             if (status == WL_CONNECTED) {
-                char to_log[50];
-                strcpy(to_log, "WiFi Connected");
-                logAndPrint(to_log);
+                syslog("WiFi Connected");
                 statusLED(255, 255, 255, true, 3);
                 // print the status to the log
-                if (DEBUG) {
-                    char to_log[50];
-                    strcpy(to_log, "Debug - about to print wifi status");
-                    logAndPrint(to_log);
-                }
+                debug_syslog("Debug - about to print wifi status");
                 printWifiStatus();
-                if (DEBUG) {
-                    char to_log[50];
-                    strcpy(to_log, "Debug - printed wifi status");
-                    logAndPrint(to_log);
-                }
+                debug_syslog("Debug - printed wifi status");
                 return WL_CONNECTED;
             } else {
-                char to_log[50];
-                strcpy(to_log, "WiFi could not connect, aborting connection");
-                logAndPrint(to_log);
+                syslog("WiFi could not connect, aborting connection");
                 statusLED(255, 255, 255, false, 3);
                 return WL_CONNECTED;
             }
@@ -1013,16 +847,9 @@ void printWifiStatus() {
 
     ltoa(rssi_l, rssi_ca, 10);
 
-    char to_log[60];
-    strcpy(to_log, "SSID: ");
-    strcat(to_log, WiFi.SSID());
-    strcat(to_log, "; IP Address: ");
-    strcat(to_log, ip_ca);
-    strcat(to_log, "; RSSI: ");
-    strcat(to_log, rssi_ca);
-    strcat(to_log, " dBm");
-
-    logAndPrint(to_log);
+    syslog(String("SSID: ") + WiFi.SSID() +
+           "; IP Address: " + ip_ca +
+           "; RSSI: " + rssi_ca + " dBm");
 }
 
 // a function to convert the IP address to a char[]
@@ -1044,13 +871,8 @@ int uploadFile(File log_file, const bool sysFile) {
     Serial.print(log_file.size());
     Serial.println();
 
-    char to_log[50];
-    strcpy(to_log, "Attempting to upload ");
-    strcat(to_log, log_file.name());
-    strcat(to_log, " (");
-    strcat(to_log, log_file_size_string);
-    strcat(to_log, " Bytes)");
-    logAndPrint(to_log);
+    syslog(String("Attempting to upload ") + log_file.name() +
+           " (" + log_file_size_string + " Bytes)");
 
     // we are going to check to see if connection was successfull
     // and then do something different it it wasn't.
@@ -1095,10 +917,7 @@ int uploadFile(File log_file, const bool sysFile) {
                                          // backend knows which key to use for decryption.
         strcat(post_address, "/");
 
-        char to_log[50];
-        strcpy(to_log, "Uploading to: ");
-        strcat(to_log, post_address);
-        logAndPrint(to_log);
+        syslog(String("Uploading to: ") + post_address);
 
         httpclient.post(post_address);
 
@@ -1149,20 +968,10 @@ int uploadFile(File log_file, const bool sysFile) {
         httpclient.endRequest();
         Serial.println();
 
-        {
-            // printing to the length of uploaded data to the log
-            char fileSizeCount_str[8];
-            itoa(fileSizeCount, fileSizeCount_str, 10);
-            char to_log[50];
-            strcpy(to_log, "Number of Bytes Uploaded: ");
-            strcat(to_log, fileSizeCount_str);
-            logAndPrint(to_log);
-        }
+        syslog(String("Number of Bytes Uploaded: ") + fileSizeCount);
 
         // printing the http status code.
         int statusCode = httpclient.responseStatusCode();
-        char statusCode_string[7];
-        itoa(statusCode, statusCode_string, 10);
 
         String httpresponse = httpclient.responseBody();
 
@@ -1174,10 +983,7 @@ int uploadFile(File log_file, const bool sysFile) {
         Serial.println(httpresponse);
 
         if (statusCode == 200) {
-            char to_log[50];
-            strcpy(to_log, "Upload successful, responce code:");
-            strcat(to_log, statusCode_string);
-            logAndPrint(to_log);
+            syslog(String("Upload successful, response code: ") + statusCode);
 
             statusLED(255, 0, 255, true, 3);
 
@@ -1185,10 +991,7 @@ int uploadFile(File log_file, const bool sysFile) {
             return 0;
         } else {
             // some status code was recieved that means it didn't work.
-            char to_log[50];
-            strcpy(to_log, "ERROR, upload failed with status code: ");
-            strcat(to_log, statusCode_string);
-            logAndPrint(to_log);
+            syslog(String("ERROR, upload failed with status code: ") + statusCode);
 
             statusLED(255, 0, 255, false, 3);
             // return a non-zero because things didn't work
@@ -1212,11 +1015,8 @@ int copyFile(File log_file) {
 
     // check to see if this archive file already exists,
     while (SD.exists(archiveFileName)) {
-        char to_log[100] = {'\0'};
-        strcpy(to_log, "Warning - ");
-        strcat(to_log, archiveFileName);
-        strcat(to_log, " already exisits, trying different name.");
-        logAndPrint(to_log);
+        syslog(String("Warning - ") + archiveFileName +
+               " already exisits, trying different name.");
 
         // if it does exist then we are going to prepend a "random" number,
         // this is not actually random, but it doesn't matter.
@@ -1235,14 +1035,9 @@ int copyFile(File log_file) {
     archiveFile = SD.open(archiveFileName_s.c_str(), FILE_WRITE);
 
     if (archiveFile) {
-        char to_log[100];
-        strcpy(to_log, "Successfully opened archive file: ");
-        strcat(to_log, archiveFileName);
-        logAndPrint(to_log);
+        syslog(String("Successfully opened archive file: ") + archiveFileName);
     } else {
-        char to_log[50];
-        strcpy(to_log, "Warning - archive file did not open");
-        logAndPrint(to_log);
+        syslog("Warning - archive file did not open");
     }
 
     // more the begining of the original file
@@ -1291,113 +1086,59 @@ int copyFile(File log_file) {
     // check to see if the file was copied across being seeing the input and outfile
     // are the same size
     if (log_file.size() == archiveFile.size()) {
-        char to_log[100];
-
-        strcpy(to_log, log_file.name());
-        strcat(to_log, " successfully copied to ");
-        strcat(to_log, ARCHIVE_FOLDER);
-        strcat(to_log, "/");
-        strcat(to_log, archiveFile.name());
-        logAndPrint(to_log);
+        syslog(String(log_file.name()) + " successfully copied to " +
+               ARCHIVE_FOLDER + "/" + archiveFile.name());
 
         archiveFile.close();
         return 0;
     } else {
-        char to_log[100];
-
-        char log_file_size_s[10];
-        char archiveFile_size_s[10];
-        itoa(log_file.size(), log_file_size_s, 10);
-        itoa(archiveFile.size(), archiveFile_size_s, 10);
-
-        strcpy(to_log, "Warning - ");
-        strcat(to_log, log_file.name());
-        strcat(to_log, " and ");
-        strcat(to_log, archiveFile.name());
-        strcat(to_log, " are not the same size. ");
-        strcat(to_log, log_file_size_s);
-        strcat(to_log, " vs ");
-        strcat(to_log, archiveFile_size_s);
-
-        logAndPrint(to_log);
-
+        syslog(String("Warning - ") + log_file.name() +
+               " and " + archiveFile.name() +
+               " are not the same size. " +
+               log_file.size() + " vs " + archiveFile.size());
         archiveFile.close();
-
         return 1;
     }
 }
 
-// Returns a logfile name from the GPS derived time
-String makeLogFileName() {
-    // Construct the file name... which is a bit of a polava!
-    String tmp_log_file_name;
-
-    tmp_log_file_name = LOG_FILE_NAME_PREFIX;
-    tmp_log_file_name = tmp_log_file_name + "_";
-
-    if (GPS.year < 10) tmp_log_file_name = tmp_log_file_name + "0";
-    tmp_log_file_name = tmp_log_file_name + GPS.year;
-
-    if (GPS.month < 10) tmp_log_file_name = tmp_log_file_name + "0";
-    tmp_log_file_name = tmp_log_file_name + GPS.month;
-
-    if (GPS.day < 10) tmp_log_file_name = tmp_log_file_name + "0";
-    tmp_log_file_name = tmp_log_file_name + GPS.day;
-
-    tmp_log_file_name = tmp_log_file_name + "-";
-
-    if (GPS.hour < 10) tmp_log_file_name = tmp_log_file_name + "0";
-    tmp_log_file_name = tmp_log_file_name + GPS.hour;
-
-    if (GPS.minute < 10) tmp_log_file_name = tmp_log_file_name + "0";
-    tmp_log_file_name = tmp_log_file_name + GPS.minute;
-
-    if (GPS.seconds < 10) tmp_log_file_name = tmp_log_file_name + "0";
-    tmp_log_file_name = tmp_log_file_name + GPS.seconds;
-
-    tmp_log_file_name = tmp_log_file_name + ".txt";
-
-    return tmp_log_file_name;
+// Return a logfile name using the current date and time from the GPS sensor
+String get_logfile_name() {
+    char buffer[50];
+    sprintf(buffer,
+            "%s_20%02d%02d%02d-%02d%02d%02d.txt",
+            LOG_FILE_NAME_PREFIX,
+            GPS.year,
+            GPS.month,
+            GPS.day,
+            GPS.hour,
+            GPS.minute,
+            GPS.seconds);
+    return String(buffer); // TODO: Remove String() conversion when no longer required
 }
 
-String getDateTime() {
-    String datetime;
-    datetime = "20";
-    if (GPS.year < 10) datetime = datetime + "0";
-    datetime = datetime + String(GPS.year);
-    datetime = datetime + "-";
-    if (GPS.month < 10) datetime = datetime + "0";
-    datetime = datetime + GPS.month;
-    datetime = datetime + "-";
-    if (GPS.day < 10) datetime = datetime + "0";
-    datetime = datetime + GPS.day;
-    datetime = datetime + "T";
-    if (GPS.hour < 10) datetime = datetime + "0";
-    datetime = datetime + GPS.hour;
-    datetime = datetime + ":";
-    if (GPS.minute < 10) datetime = datetime + "0";
-    datetime = datetime + GPS.minute;
-    datetime = datetime + ":";
-    if (GPS.seconds < 10) datetime = datetime + "0";
-    datetime = datetime + GPS.seconds;
-    datetime = datetime + ".";
-    if (GPS.milliseconds < 100) datetime = datetime + "0";
-    if (GPS.milliseconds < 10) datetime = datetime + "0";
-    datetime = datetime + GPS.milliseconds;
-    datetime = datetime + "Z";
-
-    return datetime;
+// Return a formatted current date and time from the GPS sensor
+String get_datetime() {
+    char buffer[50];
+    sprintf(buffer,
+            "20%02d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+            GPS.year,
+            GPS.month,
+            GPS.day,
+            GPS.hour,
+            GPS.minute,
+            GPS.seconds,
+            GPS.milliseconds);
+    return String(buffer); // TODO: Remove String() conversion when no longer required
 }
 
-// the function that encrypts a block of text
-void speckEncrypt(BlockCipher *cipher, size_t keySize, byte *encOutput, byte *encInput) {
-    cipher->setKey(specKey, keySize);
-    cipher->encryptBlock(encOutput, encInput);
+// Encrypt a block of text
+void speck_encrypt(BlockCipher *cipher, size_t key_size, byte *encrypted_output, byte *unencrypted_input) {
+    cipher->setKey(specKey, key_size);
+    cipher->encryptBlock(encrypted_output, unencrypted_input);
     return;
 }
 
-// rounds a number to 2 decimal places
-// example: round(3.14159) -> 3.14
+// Round a number to 2 decimal places
 double round2(double value) {
     return (int)(value * 100 + 0.5) / 100.0;
 }

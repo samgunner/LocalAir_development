@@ -21,7 +21,6 @@
 #define ESP32_GPIO0 -1
 #endif
 
-#define STREAM false // deciding weather to stream the data or not...
 #define ENCRYPT true // flag to weather to encrypt onto the SD card or not
 
 // and the encryption key information
