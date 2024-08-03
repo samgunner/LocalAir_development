@@ -21,9 +21,6 @@
 #define ESP32_GPIO0 -1
 #endif
 
-#include <ArduinoHttpClient.h>
-#include <WiFiNINA.h>
-
 #define STREAM false // deciding weather to stream the data or not...
 #define ENCRYPT true // flag to weather to encrypt onto the SD card or not
 
@@ -32,9 +29,6 @@
 
 // below a variable that defines the number of bytes is a single line of the encrupted file.
 int line_length = 960;
-
-/* Pollution Sensors */
-#define PMSerial Serial5
 
 /* the sensitivity of the accelerometer interupt */
 #define ACCEL_TRIG_SENSE 0x50

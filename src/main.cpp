@@ -1,108 +1,21 @@
-// PolMon - Log and Upload v0.1
+// ****************************************************************************
+// LocalAir pollution monitor
 //
-// This is a first full verson of the poltion monitoring software
-// at the moment it is able to read in the from the sensors:
-//      DHT22 - temp, humidiy
-//      Multigas - NO2, C2H5CH, VOC, CO
-//      PM - PM0.3, PM0.5, PM1, PM2.5, PM5, PM10
-//      Ambiant Noice - FFTs bucket bins
+// Pollution monitoring software for Teensy-based hardware.
 //
-// The software also access a GPS for the date and location information.
-// Everything is recorded to an SD card.
-// The board also has an auxillary Wifi card for uploads.
-// At the moment he plan is to use the adafruit message broker (Adafruit IO),
-// for which libraries exist have been implemented, although not here yet.
+// Reads from the following sensors:
+//   - DHT22 - temperature, humidiy
+//   - Multigas - NO2, C2H5CH, VOC, CO
+//   - PM - PM0.3, PM0.5, PM1, PM2.5, PM5, PM10
+//   - Ambient noise - FFT bucket bins
+//
+// GPS provides for the date and location information. Everything is recorded to
+// an SD card, using a Wi-Fi card for uploads.
+// ****************************************************************************
 
-#include "Arduino.h"
-
-/************************** Configuration File Import ***********************************/
-
-// edit the config.h tab and enter Adafruit IO credentials
-// and any additional configuration needed for WiFi, cellular,
-// or ethernet clients.
-#include "config.h"
-
-// there is also a "secrets.h" file that includes the device ID and the Speck
-// Encryption key. This file will not be updated in git, where instead an example
-// will be provided.
-#include "secrets.h"
-
-/************************ LED and Power Off pins definition *******************************/
-
-#define POWER_OFF_PIN (0) // This pin drives the relay that will turn the power off the the Teensy
-                          // set this pin to HIGH to turn the power OFF
-// The board now has an RGB LED, this is driven by the three pins given below.
-// use analogWrite, for example "analogWrite(LED_PIN_G, 255);" to turn the different colours on.
-#define LED_PIN_R (3) // the Red LED pin
-#define LED_PIN_G (4) // the Green LED pin
-#define LED_PIN_B (6) // the Blue LED pin
-
-/************************ Accelerometer *******************************/
-
-#include <Adafruit_ADXL343.h>
-#include <Adafruit_Sensor.h>
-#include <Wire.h>
-
-/* Assign a unique ID to this sensor at the same time */
-Adafruit_ADXL343 accel = Adafruit_ADXL343(12345);
-
-/** The input pin to enable the interrupt on, connected to INT1 on the ADXL. */
-#define INPUT_PIN_INT1 (16) // SAMD21/SAMD51 = 5 for interrupt pin
-
-/* variable for the interup responce */
-uint8_t int_resp;
-int activity_counter = INACTIVITY_TIMEOUT;
-
-/*********************** Pollution Sensor Library Imports and setup ************************/
-
-#include "DHT.h"
-// the library for the multigas sensor
-#include <Multichannel_Gas_GMXXX.h> // SDG 230314 - some messing about when moving to Ubuntu 22.04
-// have refound the old libary and so putting things back how they were.
-// #include <MultichannelGasSensor.h>
-// presumbly the below is a typo... but it does work...
-// #include "MutichannelGasSensor.h"
-#include <Wire.h>
-
-GAS_GMXXX<TwoWire> gas;
-
-// adding the stuff for the PM Sensors
-#include "PMS.h"
-
-PMS pms(PMSerial); // if you're changing this, then make sure you also change it futher down.
-PMS::DATA psmdata;
-
-/*********************** GPS Library Imports and setup ************************/
-
-// Adding the stuff for the GPS
-#include <Adafruit_GPS.h>
-
-// what's the name of the hardware serial port?
-#define GPSSerial Serial3
-
-// Connect to the GPS on the hardware port
-Adafruit_GPS GPS(&GPSSerial);
-
-/*********************** Audio and SD card Library Imports and setup ************************/
-
-// including the libraries required for the FFT analysis
-// this is also necessary for the SD card
-#include <Audio.h>
-#include <SD.h>
-#include <SPI.h>
-#include <SerialFlash.h>
-#include <Wire.h>
-
-/*********************** JSON Imports and setup ************************/
-
-// we are going to try storing the data to a json object, because it looks quite neet,
-// this requires the below library
-#include <ArduinoJson.h>
+#include "main.h"
 
 /*********************** Audio Set up ************************/
-
-// set up the mic as th input
-const int myInput = AUDIO_INPUT_MIC;
 
 // Create the Audio components for the FFT.  These should be created in the
 // order data flows, inputs/sources -> processing -> outputs
@@ -113,24 +26,15 @@ AudioAnalyzeFFT1024 myFFT;
 // Connect live input to the FFT
 AudioConnection patchCord1(adc1, 0, myFFT, 0); // NOTE: this must be changed for mic use.
 
-// this is alos copied from the library, but I don't think is needed.
-AudioControlSGTL5000 audioShield;
-
-/*********************** DHT Set up ************************/
-
-// As part of the Scooter Polution Monitoring System, the DHT sensor will be on Digital Input Pin 2,
-// this is the forth pin down on the left hand side of the Teensy
-#define DHTPIN 2 // Digital pin connected to the DHT sensor
-
-#define DHTTYPE DHT22 // DHT 22  (AM2302), AM2321
-
-// Initialize DHT sensor.
+// Initialise the sensors
 DHT dht(DHTPIN, DHTTYPE);
+GAS_GMXXX<TwoWire> gas;
+PMS pms(PMSerial);
+PMS::DATA psmdata;
+Adafruit_GPS GPS(&GPSSerial);
+Adafruit_ADXL343 accel = Adafruit_ADXL343(12345); // Unique ID to the sensor
 
 /*********************** Other variable ************************/
-
-// we are going to use a dictionary to store WiFi information
-#include <Dictionary.h>
 
 // a holding variable that will store the last fft reading
 float lastFFT[40];
@@ -153,35 +57,14 @@ int last_seconds = 0;
 
 /*********************** CONNECTION PARAMETERS ************************/
 WiFiSSLClient client;
-// trying instead the HTTPClient libary to see if that handles reposes a bit
-// better.
-// HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
-// we were doing this here, but we have moved it into the upload function so that
-// the object gets rebuilt for each upload, in the hope that that removes the errors.
 
 int status = WL_IDLE_STATUS;
 
 /*********************** Encryption **************************/
-#include <Crypto.h>
-#include <Speck.h>
 
 Speck speck;
 
 /*********************** SET FUNCTION ************************/
-
-String makeLogFileName();
-String getDateTime();
-void rainbowLED(unsigned int dur);
-void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times);
-void logAndPrint(char message[], bool nl = true, bool ts = true);
-void speckEncrypt(BlockCipher *cipher, size_t keySize, byte *encOutput, byte *encInput);
-int wifiSetUp();
-void powerOff();
-void printWifiStatus();
-int uploadFile(File log_file, const bool sysFile = false);
-int copyFile(File log_file);
-String IpAddress2String(const IPAddress &ipAddress);
-double round2(double value);
 
 void setup() {
     delay(1000);
@@ -350,12 +233,6 @@ void setup() {
     // Audio connections require memory to work.  For more
     // detailed information, see the MemoryAndCpuUsage example
     AudioMemory(12);
-
-    // I don't think the below is required, becasue are not outputting the audio
-    // Enable the audio shield and set the output volume.
-    // audioShield.enable();
-    // audioShield.inputSelect(myInput);
-    // audioShield.volume(0.5);
 
     // Configure the window algorithm to use
     myFFT.windowFunction(AudioWindowHanning1024);
@@ -1450,7 +1327,7 @@ int copyFile(File log_file) {
     }
 }
 
-// a function for making the logfile name from the GPS derived time.
+// Returns a logfile name from the GPS derived time
 String makeLogFileName() {
     // Construct the file name... which is a bit of a polava!
     String tmp_log_file_name;
