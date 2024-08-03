@@ -501,8 +501,9 @@ void loop() {
         if (GPS.fix) {
             statusLED(1, 50, 32, true, 1);
             json_gps["fix"] = "True";
-            json_gps["location"]["lat"] = GPS.latitude;
-            json_gps["location"]["long"] = GPS.longitude;
+            json_gps["location"]["lat"] = GPS.latitudeDegrees;
+            json_gps["location"]["long"] = GPS.longitudeDegrees;
+            json_gps["location"]["hdop"] = GPS.HDOP;
             json_gps["location"]["alt"] = GPS.altitude;
 
             json_gps["speed"] = GPS.speed;
@@ -514,6 +515,7 @@ void loop() {
             json_gps["fix"] = "False";
             json_gps["location"]["lat"] = "-";
             json_gps["location"]["long"] = "-";
+            json_gps["location"]["hdop"] = "-";
             json_gps["location"]["alt"] = "-";
 
             json_gps["speed"] = "-";
