@@ -1,6 +1,13 @@
-# Global ignores for the repo
-# (check sub-driectories for other specificly-ignored files)
+# Framework for compiling Ardunio code
+.pio/
+
+# Keep keys out of version control
+secrets.h
+
+# Python-related
 .ipynb_checkpoints/
 __pycache__/
+
+# OS and IDE-related
 .vscode/
 .DS_Store
