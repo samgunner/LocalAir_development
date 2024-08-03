@@ -1214,6 +1214,7 @@ int uploadFile(File log_file, const bool sysFile) {
         strcat(post_address, "/");
         strcat(post_address, DEVICE_ID); // we are now including the device ID in the url, so that the
                                          // backend knows which key to use for decryption.
+        strcat(post_address, "/");
 
         char to_log[50];
         strcpy(to_log, "Uploading to: ");
@@ -1266,11 +1267,8 @@ int uploadFile(File log_file, const bool sysFile) {
                 if (green < 0) green = 0;
             }
         }
-        Serial.println();
-        for (int i = 0; i < 1000; i++) {
-            httpclient.println('.');
-        }
         httpclient.endRequest();
+        Serial.println();
 
         {
             // printing to the length of uploaded data to the log

@@ -4,7 +4,7 @@
 
 // Upload Server details
 // #define HTTPS_SERVER "london.localair.uk"
-#define HTTPS_SERVER "debug.localair.uk"
+#define HTTPS_SERVER "debug.localair.uk" // TODO: Remove after debugging
 
 /*
  * System log file name:
@@ -41,10 +41,10 @@ int line_length = 960;
 
 /* Debugging flags */
 // #define DEBUG false // this turns on and off debug logging
-#define DEBUG true
+#define DEBUG true // TODO: Remove after debugging
 #define CHECK_GPS_DATETIME false
 // #define AUTO_POWER_OFF true
-#define AUTO_POWER_OFF false
+#define AUTO_POWER_OFF false // TODO: Remove after debugging
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
 // #define LOG_FILE_NAME_PREFIX "LocalAirData_"
