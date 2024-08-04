@@ -15,203 +15,191 @@
 
 #include "main.h"
 
-#ifdef DEBUG
-#define debug_syslog(x) syslog(x)
-#else
-#define debug_syslog(x) // No operation
-#endif
+// ****************************************************************************
+// Configuration
+//
+// We keep secrets in a separate file that is not in version control. See
+// secrets.h.example for what is required.
+// ****************************************************************************
 
-/*********************** Audio Set up ************************/
+#include "config.h"
+#include "secrets.h"
 
-// Create the Audio components for the FFT.  These should be created in the
-// order data flows, inputs/sources -> processing -> outputs
-AudioInputI2S audioInput;  // audio shield: mic or line-in
+// ****************************************************************************
+// Hardware setup
+// ****************************************************************************
+
+// WiFi and HTTP
+#include <ArduinoHttpClient.h>
+#include <WiFiNINA.h>
+WiFiSSLClient client;
+int wifi_status = WL_IDLE_STATUS;
+
+// ****************************************************************************
+
+// Accelerometer
+#include <Adafruit_ADXL343.h>
+#define INPUT_PIN_INT1 (16) // The input pin to enable the interrupt on, connected
+                            // to INT1 on the ADXL SAMD21/SAMD51 = 5 for
+                            // interrupt pin
+uint8_t int_resp;           // To hold the interrupt response
+int activity_counter = INACTIVITY_TIMEOUT;
+Adafruit_ADXL343 accelerometer = Adafruit_ADXL343(12345); // Unique ID to the sensor
+
+// ****************************************************************************
+
+// Temperature and humidity sensor
+#include <DHT.h>
+DHT dht_sensor(2, DHT22); // The DHT sensor will be on digital input pin 2. This is
+                          // the forth pin down on the left hand side of the
+                          // Teensy. DHT22 = (AM2302), AM2321
+
+// ****************************************************************************
+
+// Multigas sensor
+#include <Multichannel_Gas_GMXXX.h>
+GAS_GMXXX<TwoWire> multigas_sensor;
+
+// ****************************************************************************
+
+// PM sensor
+#include <PMS.h>
+#define PM_SERIAL Serial5
+PMS particulate_sensor(PM_SERIAL);
+PMS::DATA particulate_data;
+
+// ****************************************************************************
+
+// GPS sensor (including date/time)
+#include <Adafruit_GPS.h>
+Adafruit_GPS GPS(&Serial3);
+int last_seconds = 0; // For checking when a minute has elapsed
+
+// ****************************************************************************
+
+// Audio (including FFT analysis)
+#include <Audio.h>
+
+// Create the Audio components for the FFT. These should be created in the
+// order data flows, inputs/sources -> processing -> outputs.
 AudioInputAnalog adc1(A2); // using the adc
-AudioAnalyzeFFT1024 myFFT;
 
 // Connect live input to the FFT
-AudioConnection patchCord1(adc1, 0, myFFT, 0); // NOTE: this must be changed for mic use.
+// Note: this must be changed for mic use
+AudioAnalyzeFFT1024 FFT_data;
+AudioConnection patchCord1(adc1, 0, FFT_data, 0);
 
-// Initialise the sensors
-DHT dht(DHTPIN, DHTTYPE);
-GAS_GMXXX<TwoWire> gas;
-PMS pms(PMSerial);
-PMS::DATA psmdata;
-Adafruit_GPS GPS(&GPSSerial);
-Adafruit_ADXL343 accel = Adafruit_ADXL343(12345); // Unique ID to the sensor
+// ****************************************************************************
 
-/*********************** Other variable ************************/
+// SD card file storage
+#include <SD.h>
+File datalog_file;
+File syslog_file;
 
-// a holding variable that will store the last fft reading
-float lastFFT[40];
+// ****************************************************************************
 
-// creating the vairable for the log file
-File myFile;
-// and the variable for the logfile name, that will be constructed later
-String log_file_name;
+// Other Arduino pins
 
-// and creating the variable for the system log file
-File sysLogFile;
-// The variable that will store the system log file name
-String system_log_file_name = SYSTEM_LOG_FILE_NAME;
+// Power off pin - drives the relay that will turn the power off. Set this to
+// HIGH to turn the power off.
+#define POWER_OFF_PIN (0)
 
-// and another sd card related thing...
-const int chipSelect = 9;
+// LED pins - the board now has an RGB LED, driven by these three pins. Use
+// analogWrite, for example analogWrite(LED_PIN_G, 255) to turn the different
+// colours on.
+#define LED_PIN_R (3) // the Red LED pin
+#define LED_PIN_G (4) // the Green LED pin
+#define LED_PIN_B (6) // the Blue LED pin
 
-// a variable for checking when a minute has gone by
-int last_seconds = 0;
+// ****************************************************************************
+// Software setup
+// ****************************************************************************
 
-/*********************** CONNECTION PARAMETERS ************************/
-WiFiSSLClient client;
-
-int status = WL_IDLE_STATUS;
-
-/*********************** Encryption **************************/
-
+// Encryption
+#include <Speck.h>
 Speck speck;
 
-/*********************** SET FUNCTION ************************/
+// ****************************************************************************
+
+// Data types
+#include <ArduinoJson.h>
+#include <Dictionary.h>
+
+// ****************************************************************************
+
+// Hide verbose logging during normal use
+#ifdef DEBUG
+#define DEBUG_syslog(x) syslog(x)
+#else
+#define DEBUG_syslog(x) // No operation
+#endif
+
+// ****************************************************************************
+// Setup and main loop
+// ****************************************************************************
 
 void setup() {
-    delay(1000);
+    setup_teensy();
+    delay_with_rainbow_LED(5000); // Let things settle
 
-    // setting up flashy LEDS and Power off Pin
-    pinMode(POWER_OFF_PIN, OUTPUT);
-    pinMode(LED_PIN_R, OUTPUT);
-    pinMode(LED_PIN_G, OUTPUT);
-    pinMode(LED_PIN_B, OUTPUT);
+    // The accelerometer and the SD are the first things set up. At this early
+    // stage, and syslog() messages are only logged to Serial, not the syslog
+    // file (which is not open yet).
 
-    // seems risky, but if we are going to start logging quickly we need
-    // to set up the SD card first
-
-    // a 5s delay whiel things sort themselves out
-    rainbowLED(5000);
-
-    /* We are moving the accelerometer to the first thing we do as we are also
-     * going put a depower command into the SD card checking bit.
-     * This is because the SD can currently get stuck in a loop where it just tries
-     * and failes for ever, which sometimes it seems that a restart can bring
-     * things back.
-     */
-    /*************** Accelerometer Setup ****************/
-    /* Initialise the sensor */
-    while (!accel.begin()) {
-        /* There was a problem detecting the ADXL343 ... check your connections */
-        syslog("No ADXL343 accelerometer detected");
-        statusLED(255, 255, 0, false, 1);
-    }
-    // if we get this far then the accelerometer has been detected.
-    statusLED(255, 255, 0, true, 1);
-
-    /* Set the range to whatever is appropriate for your project */
-    accel.setRange(ADXL343_RANGE_2_G);
-
-    int_config g_int_config_enabled = {0};
-    int_config g_int_config_map = {0};
-
-    /* Enable activity interrupts on the accelerometer. */
-    g_int_config_enabled.bits.activity = true;
-    accel.enableInterrupts(g_int_config_enabled);
-
-    /* Map activity interrupts to INT1 pin. */
-    g_int_config_map.bits.activity = ADXL343_INT1;
-    accel.mapInterrupts(g_int_config_map);
-
-    /* set the activty threshold for firing the interupt */
-    /*
-     *  I've tried a few values for hte activity threshold,
-     *  0x50 sort of worked, although putting on the bike it looks like
-     *  it timed out quite often, so am now trying 0x30
-     */
-    accel.writeRegister(0x24, ACCEL_TRIG_SENSE);
-    /* and adding all the axis to the interupt */
-    // and trying to add all the of the axis to the interupt
-    accel.writeRegister(0x27, 0xE0);
-    accel.writeRegister(0x1D, 0xFF);
-
-    syslog("ADXL343 accelerometer init complete");
-    statusLED(255, 255, 0, true, 1);
-    /*********************** SD Card Setup ************************/
-
-    Serial.print("Initializing SD card...");
-
-    // we are going to have a number of goes at initialising the SD card and
-    // and then give up and restart.
-    int SD_retries = 5;
-
-    while (true) {
-        if (SD.begin(chipSelect)) {
-            break;
-        }
-        Serial.println("initialization failed!");
-        statusLED(0, 0, 255, false, 5); // SD initiasation failed
-
-        // count down the number of retries
-        SD_retries = SD_retries - 1;
-        Serial.print(SD_retries);
-
-        if (SD_retries < 1) {
-            // do a restart and see if we have more luck with the SD card
-            // next time.
-            powerOff();
-        }
-    }
-    Serial.println("initialization done.");
-    statusLED(0, 0, 255, true, 3); // SD initiasation succeeded
-
-    // create the system log file
-    sysLogFile = SD.open(system_log_file_name.c_str(), FILE_WRITE);
-    // check to see if the system log file now exists... not sure what we'll do if it doesn't...
-    if (!sysLogFile) {
-        statusLED(165, 42, 42, false, 10);
+    syslog("Initialising ADXL343 accelerometer");
+    if (setup_accelerometer(accelerometer)) {
+        syslog("Accelerometer initialisation succeeded");
+        flash_status_LED(255, 255, 0, STATUS_LED_SUCCESS);
     } else {
-        statusLED(165, 42, 42, true, 5);
+        syslog("Accelerometer initialisation failed, powering off");
+        flash_status_LED(255, 255, 0, STATUS_LED_FAILURE);
+        power_off();
     }
 
-    // writing a start up message
+    syslog("Initialising SD card");
+    if (setup_SD_card()) {
+        syslog("SD initialisation succeeded");
+        flash_status_LED(0, 0, 255, STATUS_LED_SUCCESS, 3);
+    } else {
+        syslog("SD initialisation failed, powering off");
+        flash_status_LED(0, 0, 255, STATUS_LED_FAILURE, 10);
+        power_off();
+    }
+
+    syslog("Creating syslog file");
+    syslog_file = SD.open(SYSTEM_LOG_FILE_NAME, FILE_WRITE);
+    if (syslog_file) {
+        flash_status_LED(165, 42, 42, STATUS_LED_SUCCESS, 3);
+    } else {
+        syslog("Syslog creation failed, powering off");
+        flash_status_LED(165, 42, 42, STATUS_LED_FAILURE, 10);
+        power_off();
+    }
+
+    // Now the syslog file has been created, begin setting up the remaining
+    // sensors.
 
     syslog("======================================");
-    syslog("Starting LocalAir Polultion Monitoring");
-    syslog(DEVICE_ID);
+    syslog("Starting LocalAir Pollution Monitoring");
+    syslog("This is: " DEVICE_ID);
+    syslog("Accelerometer and SD card already initialised");
 
-    /*********************** Setup sensors ************************/
+    syslog("Initialising DHT sensor");
+    dht_sensor.begin();
 
-    // set up DHT sensor
-    dht.begin();
+    syslog("Initialising multigas sensor");
+    multigas_sensor.begin(Wire, 0x08);
 
-    // Set up MultiGas sensor
-    gas.begin(Wire, 0x08);
+    syslog("Initialising particulate sensor");
+    PM_SERIAL.begin(9600);
 
-    // The PMS sensor is on Serial5
-    PMSerial.begin(9600);
+    syslog("Initialising GPS sensor");
+    setup_GPS(GPS);
 
-    /*********************** Setup GPS ************************/
+    syslog("Initialising audio sensor");
+    // setup_audio(FFT_data);
 
-    // some configuration for the GPS, which is going to be trigger for the other data collection
-    // elements.
-
-    // 9600 NMEA is the default baud rate for Adafruit MTK GPS's- some use 4800
-    GPS.begin(9600);
-    // set up sentences
-    GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-    // Set the update rate
-    GPS.sendCommand(PMTK_SET_NMEA_UPDATE_200_MILLIHERTZ); // 5 second update
-
-    /*********************** Audio Setup ************************/
-
-    // Setting up the analouge input pin. The internal pull down is too low a value,
-    // which distorts the voltage being read (and presumably drains the battery). Instead
-    // the internal pull down is turned off and an external 1MOhm res is used.
-    pinMode(A8, INPUT);
-
-    // The FFT setup
-    // Audio connections require memory to work.  For more
-    // detailed information, see the MemoryAndCpuUsage example
-    AudioMemory(12);
-
-    // Configure the window algorithm to use
-    myFFT.windowFunction(AudioWindowHanning1024);
-
+    syslog("Creating datalog file");
     /*********************** Log File Creation ************************/
 
     // we are going to do a GPS read so that we can name the log file after the date and time
@@ -236,44 +224,35 @@ void setup() {
     if (CHECK_GPS_DATETIME) {
         if (GPS.year == 80) {
             syslog("GPS clock not set, shutting down");
-            statusLED(0, 255, 125, false, 5);
-            powerOff();
+            flash_status_LED(0, 255, 125, false, 5);
+            power_off();
         }
     }
 
     // save gps datetime to the syslog so that it can be compared with syslog times
-    // although this means that it might be converterd into a char array first.
-    String datetime_s = get_datetime();
-    int datetime_l = datetime_s.length() + 1;
-    char datetime_c[datetime_l];
-    datetime_s.toCharArray(datetime_c, datetime_l);
+    syslog("GPS clock is set to: %s", get_datetime());
 
-    syslog("GPS clock is set to: %s", datetime_c);
+    // Only start the main loop if a log file can be created and opened for
+    // writing, otherwise shutdown.
 
-    // set the log file name
-    log_file_name = get_logfile_name();
+    const char *log_file_name = get_logfile_name();
+    datalog_file = SD.open(log_file_name, FILE_WRITE);
 
-    // also as a char array...
-    char log_file_name_ca[log_file_name.length()];
-    log_file_name.toCharArray(log_file_name_ca, log_file_name.length() + 1);
+    delay(100); // Allow time for things to settle
 
-    // open the file.
-    myFile = SD.open(log_file_name.c_str(), FILE_WRITE);
-
-    delay(100);
-
-    // check to see if the file opened ok!
-    if (myFile) {
-        syslog("Created log file: %s", log_file_name_ca);
-        statusLED(75, 75, 125, true, 2);
-    } else {
-        syslog("Error - Count not create log file: %s", log_file_name_ca);
-        statusLED(75, 75, 125, false, 10);
+    if (!datalog_file) {
+        syslog("Error - Count not create log file: %s", log_file_name);
+        flash_status_LED(75, 75, 125, false, 10);
+        delay(5000);
+        power_off();
     }
 
-    if (ENCRYPT) {
-        syslog("ENCRYPT flag is set, log file will be encrypted");
-    }
+    syslog("Created log file: %s", log_file_name);
+    flash_status_LED(75, 75, 125, true, 2);
+
+#ifdef ENCRYPT
+    syslog("ENCRYPT flag is set, log file will be encrypted");
+#endif
 }
 
 void loop() {
@@ -290,7 +269,7 @@ void loop() {
     // the bulk of the code will only run when a new message is recievd.
 
     // read the PSM data each loop through.
-    pms.read(psmdata);
+    particulate_sensor.read(particulate_data);
 
     // read data from the GPS in the 'main loop', to see if there is a new message
     GPS.read();
@@ -298,12 +277,14 @@ void loop() {
     // The FFT setup
     float fft_val;
     int fft_count;
+    float lastFFT[40];
+
     // we are going to grab the FFT on every loop, but only print the data when the rest of the
     // sensors are read. It's not pretty, but I can't be sure that the data won't back up if
     // don't do this. The device seems to have more than enough power to do this without worry.
-    if (myFFT.available()) {
+    if (FFT_data.available()) {
         for (fft_count = 0; fft_count < 40; fft_count++) {
-            lastFFT[fft_count] = myFFT.read(fft_count);
+            lastFFT[fft_count] = FFT_data.read(fft_count);
         }
     }
 
@@ -326,12 +307,7 @@ void loop() {
 
         /*********************** Construct datetime ********************/
 
-        // construct the GPS datetime... you feel there must be better way of doing this...
-        String datetime = get_datetime();
-
-        // adding datetime values to the json obj
-        // moving the datetime to root, and off of the GPS.
-        root["datetime"] = datetime;
+        root["datetime"] = get_datetime();
 
         /*********************** Construct location ********************/
 
@@ -339,7 +315,7 @@ void loop() {
         JsonObject json_gps = root["GPS"].to<JsonObject>();
 
         if (GPS.fix) {
-            statusLED(1, 50, 32, true, 1);
+            flash_status_LED(1, 50, 32, true, 1);
             json_gps["fix"] = "True";
             json_gps["location"]["lat"] = GPS.latitudeDegrees;
             json_gps["location"]["long"] = GPS.longitudeDegrees;
@@ -350,7 +326,7 @@ void loop() {
             json_gps["angle"] = GPS.angle;
             json_gps["satellites"] = GPS.satellites;
         } else {
-            statusLED(1, 50, 32, false, 1);
+            flash_status_LED(1, 50, 32, false, 1);
             // If there is any hope if this being passable as a csv we have the fields the same
             json_gps["fix"] = "False";
             json_gps["location"]["lat"] = "-";
@@ -370,11 +346,11 @@ void loop() {
 
         // Reading temperature or humidity takes about 250 milliseconds!
         // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-        float h = dht.readHumidity();
+        float h = dht_sensor.readHumidity();
         // Read temperature as Celsius (the default)
-        float t = dht.readTemperature();
+        float t = dht_sensor.readTemperature();
         // Read temperature as Fahrenheit (isFahrenheit = true)
-        float f = dht.readTemperature(true);
+        float f = dht_sensor.readTemperature(true);
 
         // Check if any reads failed and exit early (to try again).
         if (isnan(h) || isnan(t) || isnan(f)) {
@@ -383,7 +359,7 @@ void loop() {
             json_dht["heat_index"] = "-";
         } else {
             // Compute heat index in Celsius (isFahreheit = false)
-            float hic = dht.computeHeatIndex(t, h, false);
+            float hic = dht_sensor.computeHeatIndex(t, h, false);
 
             json_dht["humidity"] = round2(h);
             json_dht["temp"] = round2(t);
@@ -397,10 +373,10 @@ void loop() {
 
         // Now reading in the MultiGas sensor readings
 
-        root["MultiGas"]["no2"] = gas.measure_NO2();
-        root["MultiGas"]["c2h5ch"] = gas.measure_C2H5OH();
-        root["MultiGas"]["voc"] = gas.measure_VOC();
-        root["MultiGas"]["co"] = gas.measure_CO();
+        root["MultiGas"]["no2"] = multigas_sensor.measure_NO2();
+        root["MultiGas"]["c2h5ch"] = multigas_sensor.measure_C2H5OH();
+        root["MultiGas"]["voc"] = multigas_sensor.measure_VOC();
+        root["MultiGas"]["co"] = multigas_sensor.measure_CO();
 
         /*********************** Get and store PM Data ********************/
 
@@ -409,9 +385,9 @@ void loop() {
 
         // JsonObject json_ae = json_pms.createNestedObject("atmos_enviro");
 
-        root["PM_Sensor"]["atmos_enviro"]["AE_1.0"] = psmdata.PM_AE_UG_1_0;
-        root["PM_Sensor"]["atmos_enviro"]["AE_2.5"] = psmdata.PM_AE_UG_2_5;
-        root["PM_Sensor"]["atmos_enviro"]["AE_10.0"] = psmdata.PM_AE_UG_10_0;
+        root["PM_Sensor"]["atmos_enviro"]["AE_1.0"] = particulate_data.PM_AE_UG_1_0;
+        root["PM_Sensor"]["atmos_enviro"]["AE_2.5"] = particulate_data.PM_AE_UG_2_5;
+        root["PM_Sensor"]["atmos_enviro"]["AE_10.0"] = particulate_data.PM_AE_UG_10_0;
 
         /*********************** Get and store FFT Data ********************/
 
@@ -437,43 +413,43 @@ void loop() {
         Serial.println();
 
         /*********************** Printing to File ********************/
-        if (ENCRYPT) {
-            // a buffer for the plain text block
-            byte bytePlanebuffer[17];
+#ifdef ENCRYPT
+        // a buffer for the plain text block
+        byte bytePlanebuffer[17];
 
-            // two duffers for the encrypted data
-            byte encryptedText[line_length];
-            byte encryptedbuffer[16];
+        // two duffers for the encrypted data
+        byte encryptedText[line_length];
+        byte encryptedbuffer[16];
 
-            int specKeySize = SPECKKEYSIZE;
+        int specKeySize = SPECKKEYSIZE;
 
-            // we now run through the line, encrupting it one 16 byte block at a time.
-            int i;
-            for (i = 0; i < (line_length / 16); i++) {
-                memcpy(&bytePlanebuffer, &deserialized[i * 16], 16);
+        // we now run through the line, encrupting it one 16 byte block at a time.
+        int i;
+        for (i = 0; i < (line_length / 16); i++) {
+            memcpy(&bytePlanebuffer, &deserialized[i * 16], 16);
 
-                speck_encrypt(&speck, specKeySize, encryptedbuffer, bytePlanebuffer);
+            speck_encrypt(&speck, specKeySize, encryptedbuffer, bytePlanebuffer);
 
-                memcpy(&encryptedText[i * 16], &encryptedbuffer, 16);
-            }
-            // I've decided that I am going to save the file in ascii encoded hex,
-            // which of course doubles its size... but that's ok
-            for (i = 0; i < (int)sizeof(encryptedText); i++) {
-                char hexChar[3];
-                // cast the byte into hex
-                sprintf(hexChar, "%02X", encryptedText[i]);
-                // and write it to the file
-                myFile.write(hexChar);
-            }
-            // write a new line and flush the buffer
-            myFile.write("\n");
-            myFile.flush();
-        } else {
-            // if we are not encrypting then just save to the file
-            myFile.write(deserialized);
-            myFile.write("\n");
-            myFile.flush();
+            memcpy(&encryptedText[i * 16], &encryptedbuffer, 16);
         }
+        // I've decided that I am going to save the file in ascii encoded hex,
+        // which of course doubles its size... but that's ok
+        for (i = 0; i < (int)sizeof(encryptedText); i++) {
+            char hexChar[3];
+            // cast the byte into hex
+            sprintf(hexChar, "%02X", encryptedText[i]);
+            // and write it to the file
+            datalog_file.write(hexChar);
+        }
+        // write a new line and flush the buffer
+        datalog_file.write("\n");
+        datalog_file.flush();
+#else
+        // if we are not encrypting then just save to the file
+        datalog_file.write(deserialized);
+        datalog_file.write("\n");
+        datalog_file.flush();
+#endif
 
         /*********************** CHECK TIME, THEN WIFI AND UPLOAD ********************/
 
@@ -485,11 +461,11 @@ void loop() {
                 // trying to diable the FFT to see if this stops some of the funny behaviour
                 AudioNoInterrupts();
 
-                debug_syslog("Debug - about to close log file");
+                DEBUG_syslog("Debug - about to close log file");
 
-                myFile.close();
+                datalog_file.close();
 
-                debug_syslog("Debug - log file closed");
+                DEBUG_syslog("Debug - log file closed");
 
                 // we're going to try and upload all the files!... how exiting
 
@@ -500,29 +476,29 @@ void loop() {
 
                 File filesRoot = SD.open("/");
 
-                debug_syslog("Debug - opening SD card root");
+                DEBUG_syslog("Debug - opening SD card root");
 
                 while (true) {
-                    debug_syslog("Debug - about to open Next File");
+                    DEBUG_syslog("Debug - about to open Next File");
 
                     File log_file = filesRoot.openNextFile();
 
-                    debug_syslog("Debug - opened Next File");
+                    DEBUG_syslog("Debug - opened Next File");
 
                     if (!log_file) {
-                        debug_syslog("Debug - No more files, breaking loop");
+                        DEBUG_syslog("Debug - No more files, breaking loop");
                         break;
                     }
 
                     // don't upload the system log file stragiht away.
                     if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
-                        debug_syslog("Debug - SysLog found, skipping");
+                        DEBUG_syslog("Debug - SysLog found, skipping");
                         continue;
                     }
 
                     // check to see if it is the archive directory, and if so move on.
                     if (log_file.isDirectory()) {
-                        debug_syslog("Debug - directory found, skipping");
+                        DEBUG_syslog("Debug - directory found, skipping");
                         continue;
                     }
 
@@ -614,23 +590,23 @@ void loop() {
 
                 // need to post to the sys log file, and then close and reopen it for reading
                 syslog(SYSTEM_LOG_FILE_NAME " will now be uploaded, after which the system will shutdown");
-                sysLogFile.close(); // TODO: Just seek(0) ?
-                sysLogFile = SD.open(SYSTEM_LOG_FILE_NAME, FILE_READ);
+                syslog_file.close(); // TODO: Just seek(0) ?
+                syslog_file = SD.open(SYSTEM_LOG_FILE_NAME, FILE_READ);
 
-                int upload_status = uploadFile(sysLogFile, true);
+                int upload_status = uploadFile(syslog_file, true);
 
                 if (upload_status == 0) {
-                    statusLED(255, 215, 0, true, 5); // Log file uploaded
+                    flash_status_LED(255, 215, 0, true, 5); // Log file uploaded
                 } else {
-                    statusLED(255, 215, 0, false, 5); // Log file failed to upload
+                    flash_status_LED(255, 215, 0, false, 5); // Log file failed to upload
                 }
 
                 /* just clear any interupts there might be on the acceleromter */
-                int_resp = accel.checkInterrupts();
+                int_resp = accelerometer.checkInterrupts();
 
                 Serial.println("Shutting Down");
 
-                powerOff();
+                power_off();
             }
 
             /* we are now going to check the interupts on the accelerometer
@@ -641,7 +617,7 @@ void loop() {
              *  131 -> means no interups
              *  147 -> means activity
              */
-            int_resp = accel.checkInterrupts();
+            int_resp = accelerometer.checkInterrupts();
 
             if (int_resp == 131) {
                 /* no actvity since last minute, so decrement the 5 min counter */
@@ -655,11 +631,11 @@ void loop() {
             if (activity_counter < 1) {
                 syslog("No movement Detected for 5 minutes, switching off");
 
-                sysLogFile.close();
-                myFile.close();
+                syslog_file.close();
+                datalog_file.close();
 
-                statusLED(192, 192, 192, true, 5); // Activity counter
-                powerOff();
+                flash_status_LED(192, 192, 192, true, 5); // Activity counter
+                power_off();
             }
         }
 
@@ -668,110 +644,170 @@ void loop() {
     }
 }
 
-// This replaces the normal delay function, producing a rainbow on teh LED while
-// for a given duration in miliseconds
-void rainbowLED(unsigned int dur) {
+// ****************************************************************************
+// Helper functions
+// ****************************************************************************
+
+void setup_teensy() {
+    delay(1000); // Let things settle
+
+    pinMode(POWER_OFF_PIN, OUTPUT);
+    pinMode(LED_PIN_R, OUTPUT);
+    pinMode(LED_PIN_G, OUTPUT);
+    pinMode(LED_PIN_B, OUTPUT);
+}
+
+bool setup_accelerometer(Adafruit_ADXL343 &accelerometer) {
+    bool accelerometer_detected = false;
+    for (int tries = 5; tries > 0; tries--) {
+        if (accelerometer.begin()) {
+            accelerometer_detected = true;
+            break;
+        }
+        delay(1000);
+    }
+    if (!accelerometer_detected) {
+        return false;
+    }
+
+    accelerometer.setRange(ADXL343_RANGE_2_G); // +/- 2g sensor range
+
+    // Enable activity interrupts on the accelerometer and map them to the INT1
+    // pin (see the Analog Devices ADXL343 Breakout Learning Guide)
+    int_config g_int_config_enabled = {0};
+    int_config g_int_config_map = {0};
+    g_int_config_enabled.bits.activity = true;
+    accelerometer.enableInterrupts(g_int_config_enabled);
+    g_int_config_map.bits.activity = ADXL343_INT1;
+    accelerometer.mapInterrupts(g_int_config_map);
+
+    // Set the activity threshold for firing the interupt. I've tried a few
+    // values for the activity threshold, 0x50 sort of worked, although putting
+    // on the bike it looks like it timed out quite often, so am now trying
+    // 0x30.
+    accelerometer.writeRegister(0x24, ACCEL_TRIG_SENSE);
+    accelerometer.writeRegister(0x27, 0xE0); // and trying to add all the of
+    accelerometer.writeRegister(0x1D, 0xFF); // the axis to the interupt
+
+    return true;
+}
+
+bool setup_SD_card() {
+    for (int tries = 5; tries > 0; tries--) {
+        if (SD.begin(SD_CHIP_SELECT)) {
+            return true;
+        }
+        delay(1000);
+    }
+    return false;
+}
+
+void setup_GPS(Adafruit_GPS &GPS) {
+    // 9600 NMEA is the default baud rate for Adafruit MTK GPS's - some use 4800
+    GPS.begin(9600);
+    GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);         // Set up sentences
+    GPS.sendCommand(PMTK_SET_NMEA_UPDATE_200_MILLIHERTZ); // 5 second update rate
+}
+
+void setup_audio(AudioAnalyzeFFT1024 &FFT_data) {
+    // Setting up the analogue input pin. The internal pull down is too low a
+    // value, which distorts the voltage being read (and presumably drains the
+    // battery). Instead the internal pull down is turned off and an external
+    // 1MOhm resistor is used.
+    pinMode(A8, INPUT);
+
+    // The FFT setup - audio connections require memory to work. For more
+    // detailed information, see the MemoryAndCpuUsage example.
+    AudioMemory(12);
+
+    // Configure the window algorithm to use
+    FFT_data.windowFunction(AudioWindowHanning1024);
+}
+
+#define RAINBOW_LED_DELAY 1
+void delay_with_rainbow_LED(unsigned int duration) {
     unsigned start_time = millis();
-    int rainbow_delay = 1;
 
     analogWrite(LED_PIN_R, 255);
     analogWrite(LED_PIN_G, 0);
     analogWrite(LED_PIN_B, 0);
 
-    while (millis() < start_time + dur) {
+    while (millis() < start_time + duration) {
         for (int i = 0; i <= 255; i++) {
-            if (millis() > start_time + dur) {
+            if (millis() > start_time + duration) {
                 break;
             }
             analogWrite(LED_PIN_R, 255 - i);
             analogWrite(LED_PIN_G, i);
-            delay(rainbow_delay);
+            delay(RAINBOW_LED_DELAY);
         }
         for (int i = 0; i <= 255; i++) {
-            if (millis() > start_time + dur) {
+            if (millis() > start_time + duration) {
                 break;
             }
             analogWrite(LED_PIN_G, 255 - i);
             analogWrite(LED_PIN_B, i);
-            delay(rainbow_delay);
+            delay(RAINBOW_LED_DELAY);
         }
         for (int i = 0; i <= 255; i++) {
-            if (millis() > start_time + dur) {
+            if (millis() > start_time + duration) {
                 break;
             }
             analogWrite(LED_PIN_B, 255 - i);
             analogWrite(LED_PIN_R, i);
-            delay(rainbow_delay);
+            delay(RAINBOW_LED_DELAY);
         }
     }
+
     analogWrite(LED_PIN_R, 0);
     analogWrite(LED_PIN_G, 0);
     analogWrite(LED_PIN_B, 0);
 }
 
-// we are going to have a function that will do the LED flashing,
-// The plan is to have a different colour for each block of code,
-// and then alternate between that colour and either Red or Green
-// depending on whether it has been successfully or not.
-// the three [colour]LED variables are the values for each colour
-// the stat variable is the success/failure indicator (true is success)
-// times is the number of times to flash.
-// the frequency of the flashing is set by the statusLEDDelay variable, in defines.
-void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times) {
-    int statusLEDDelay = 500;
-    int i = 0;
-    while (i < times) {
-        analogWrite(LED_PIN_R, redLED);
-        analogWrite(LED_PIN_G, greenLED);
-        analogWrite(LED_PIN_B, blueLED);
+#define STATUS_LED_DELAY 500
+void flash_status_LED(const int red, const int green, const int blue, const bool status, const int times) {
+    for (int i = 0; i < times; i++) {
+        analogWrite(LED_PIN_R, red);
+        analogWrite(LED_PIN_G, green);
+        analogWrite(LED_PIN_B, blue);
 
-        delay(statusLEDDelay);
+        delay(STATUS_LED_DELAY);
 
-        if (!stat) {
-            analogWrite(LED_PIN_R, 255);
-            analogWrite(LED_PIN_G, 0);
-            analogWrite(LED_PIN_B, 0);
-        } else {
+        if (status == STATUS_LED_SUCCESS) {
             analogWrite(LED_PIN_R, 0);
             analogWrite(LED_PIN_G, 255);
             analogWrite(LED_PIN_B, 0);
+        } else {
+            analogWrite(LED_PIN_R, 255);
+            analogWrite(LED_PIN_G, 0);
+            analogWrite(LED_PIN_B, 0);
         }
 
-        delay(statusLEDDelay);
-        i++;
+        delay(STATUS_LED_DELAY);
     }
+
     analogWrite(LED_PIN_R, 0);
     analogWrite(LED_PIN_G, 0);
     analogWrite(LED_PIN_B, 0);
 }
 
-// Print messsage to the serial console and the syslog file
-//
-// A timestamp is appended and a newline appended. Then the syslog file is
-// flushed.
 template <typename Any>
 void syslog(Any message) {
     syslog("%s", message);
 }
 
-// Print a formatted messsage to the serial console and the syslog file
-//
-// The `arguments` are formatted using the `format` character array. A timestamp
-// is appended and a newline appended. Then the syslog file is flushed.
 template <typename... Args>
 void syslog(const char *message, Args... arguments) {
-    char millis_s[14];
-    sprintf(millis_s, "%010lu - ", millis());
-    Serial.print(millis_s);
-    sysLogFile.print(millis_s);
+    const uint32_t timestamp = millis();
+    Serial.printf("%010lu ", timestamp);
+    syslog_file.printf("%010lu ", timestamp);
 
     Serial.printf(message, arguments...);
-    sysLogFile.printf(message, arguments...);
+    syslog_file.printf(message, arguments...);
 
     Serial.println();
-    sysLogFile.println();
-
-    sysLogFile.flush();
+    syslog_file.println();
+    syslog_file.flush();
 }
 
 // a function to set up the WiFi
@@ -807,38 +843,43 @@ int wifiSetUp() {
             int i = WIFI_ATTEMPTS;
             do {
                 i = i - 1;
-                statusLED(255, 255, 255, false, 1);
+                flash_status_LED(255, 255, 255, false, 1);
                 // try to connect
-                status = WiFi.begin(ssid, pass);
-            } while ((status != WL_CONNECTED) && (i > 1));
+                wifi_status = WiFi.begin(ssid, pass);
+            } while ((wifi_status != WL_CONNECTED) && (i > 1));
 
-            if (status == WL_CONNECTED) {
+            if (wifi_status == WL_CONNECTED) {
                 syslog("WiFi Connected");
-                statusLED(255, 255, 255, true, 3);
+                flash_status_LED(255, 255, 255, true, 3);
                 // print the status to the log
-                debug_syslog("Debug - about to print wifi status");
+                DEBUG_syslog("Debug - about to print wifi status");
                 printWifiStatus();
-                debug_syslog("Debug - printed wifi status");
+                DEBUG_syslog("Debug - printed wifi status");
                 return WL_CONNECTED;
             } else {
                 syslog("WiFi could not connect, aborting connection");
-                statusLED(255, 255, 255, false, 3);
+                flash_status_LED(255, 255, 255, false, 3);
                 return WL_CONNECTED;
             }
         }
     }
     // if there was no network to connect to then we flash a fetching pink
-    statusLED(255, 150, 150, false, 1);
+    flash_status_LED(255, 150, 150, false, 1);
     return 0;
 }
 
-/* a function that will do the powering off */
-void powerOff() {
-    if (AUTO_POWER_OFF) {
-        /* just clear any interupts there might be on the acceleromter */
-        int_resp = accel.checkInterrupts();
+// Switch the Teensy off (or restart it when debugging)
+void power_off() {
+    // Clear any interupts there might be on the acceleromter
+    int_resp = accelerometer.checkInterrupts();
 
+    if (AUTO_POWER_OFF) {
         digitalWrite(POWER_OFF_PIN, HIGH);
+    } else {
+        SCB_AIRCR = 0x05FA0004; // Application Interrupt & Reset
+        while (true) {
+            asm("wfi");
+        }
     }
 }
 
@@ -874,17 +915,17 @@ String IpAddress2String(const IPAddress &ipAddress) {
 }
 
 // a function for uploading the data file to the server
-int uploadFile(File log_file, const bool sysFile) {
+int uploadFile(File file, const bool sysFile) {
     // we are now going to upload to James's server, using SSL of all things
 
-    char log_file_size_string[7];
-    itoa(log_file.size(), log_file_size_string, 10);
+    char file_size_string[7];
+    itoa(file.size(), file_size_string, 10);
 
     Serial.print("NOT LOGGED - File size: ");
-    Serial.print(log_file.size());
+    Serial.print(file.size());
     Serial.println();
 
-    syslog("Attempting to upload %s (%s Bytes)", log_file.name(), log_file_size_string);
+    syslog("Attempting to upload %s (%s Bytes)", file.name(), file_size_string);
 
     // we are going to check to see if connection was successfull
     // and then do something different it it wasn't.
@@ -894,7 +935,7 @@ int uploadFile(File log_file, const bool sysFile) {
     // check connection
     // if (server_connected) {
     if (true) {
-        unsigned long fileSize = log_file.size();
+        unsigned long fileSize = file.size();
 
         int red = 255;
         int green = 0;
@@ -933,7 +974,7 @@ int uploadFile(File log_file, const bool sysFile) {
 
         httpclient.post(post_address);
 
-        httpclient.sendHeader("Content-Length", log_file.size());
+        httpclient.sendHeader("Content-Length", file.size());
         // httpclient.sendHeader("Content-Length", 100);
         httpclient.sendHeader("Content-Type", "text/plain");
         // httpclient.sendHeader("Connection", "close");
@@ -945,17 +986,17 @@ int uploadFile(File log_file, const bool sysFile) {
         int fileSizeCount = 0;
 
         Serial.print("Uploading: ");
-        while (log_file.available()) {
+        while (file.available()) {
             /*
             char this_line[line_length*2+1];
-            log_file.read(this_line, line_length*2+1);
+            file.read(this_line, line_length*2+1);
             Serial.print("this_line: ");
             Serial.print(this_line);
             Serial.println();
             httpclient.print(this_line);
             //client.print('\n');
             */
-            auto line = log_file.readStringUntil('\n');
+            auto line = file.readStringUntil('\n');
             httpclient.println(line);
 
             // trying to count the amount of data that has been uploaded
@@ -997,7 +1038,7 @@ int uploadFile(File log_file, const bool sysFile) {
         if (statusCode == 200) {
             syslog("Upload successful, status code: %s", statusCode);
 
-            statusLED(255, 0, 255, true, 3);
+            flash_status_LED(255, 0, 255, true, 3);
 
             // return a zero because things worked
             return 0;
@@ -1005,7 +1046,7 @@ int uploadFile(File log_file, const bool sysFile) {
             // some status code was recieved that means it didn't work.
             syslog("ERROR, upload failed with status code: %s", statusCode);
 
-            statusLED(255, 0, 255, false, 3);
+            flash_status_LED(255, 0, 255, false, 3);
             // return a non-zero because things didn't work
             return 1;
         }
@@ -1014,7 +1055,7 @@ int uploadFile(File log_file, const bool sysFile) {
 
 // rather than deleting a file after up load we are going to move the file
 // into an archive folder
-int copyFile(File log_file) {
+int copyFile(File file) {
     // check to see if the archive dir exisits.
     if (!SD.exists(ARCHIVE_FOLDER)) {
         SD.mkdir(ARCHIVE_FOLDER);
@@ -1023,7 +1064,7 @@ int copyFile(File log_file) {
     char archiveFileName[40];
     strcpy(archiveFileName, ARCHIVE_FOLDER);
     strcat(archiveFileName, "/");
-    strcat(archiveFileName, log_file.name());
+    strcat(archiveFileName, file.name());
 
     // check to see if this archive file already exists,
     while (SD.exists(archiveFileName)) {
@@ -1036,7 +1077,7 @@ int copyFile(File log_file) {
         strcpy(archiveFileName, ARCHIVE_FOLDER);
         strcat(archiveFileName, "/id");
         strcat(archiveFileName, rand_s);
-        strcat(archiveFileName, log_file.name());
+        strcat(archiveFileName, file.name());
     }
 
     // if we've managed to make a file that doesn't already exist then
@@ -1052,10 +1093,10 @@ int copyFile(File log_file) {
     }
 
     // more the begining of the original file
-    log_file.seek(0);
+    file.seek(0);
 
     // we are going to do the same LED fading, but from blue to green
-    unsigned long fileSize = log_file.size();
+    unsigned long fileSize = file.size();
 
     int blue = 255;
     int green = 0;
@@ -1072,10 +1113,10 @@ int copyFile(File log_file) {
 
     int i = ledStep;
 
-    while (log_file.available()) {
+    while (file.available()) {
         // this is where we actually copy acoss.
         char this_line[((line_length * 2) + 1)];
-        log_file.read(this_line, ((line_length * 2) + 1));
+        file.read(this_line, ((line_length * 2) + 1));
         archiveFile.write(this_line, ((line_length * 2) + 1));
 
         i--;
@@ -1096,46 +1137,48 @@ int copyFile(File log_file) {
 
     // check to see if the file was copied across being seeing the input and outfile
     // are the same size
-    if (log_file.size() == archiveFile.size()) {
-        syslog("%s successfully copied to %s/%s", log_file.name(), ARCHIVE_FOLDER, archiveFile.name());
+    if (file.size() == archiveFile.size()) {
+        syslog("%s successfully copied to %s/%s", file.name(), ARCHIVE_FOLDER, archiveFile.name());
 
         archiveFile.close();
         return 0;
     } else {
-        syslog("Warning - %s and %s are not the same size. %d vs %d", log_file.name(), archiveFile.name(), log_file.size(), archiveFile.size());
+        syslog("Warning - %s and %s are not the same size. %d vs %d", file.name(), archiveFile.name(), file.size(), archiveFile.size());
         archiveFile.close();
         return 1;
     }
 }
 
-// Return a logfile name using the current date and time from the GPS sensor
-String get_logfile_name() {
-    char buffer[50];
-    sprintf(buffer,
-            "%s_20%02d%02d%02d-%02d%02d%02d.txt",
-            LOG_FILE_NAME_PREFIX,
-            GPS.year,
-            GPS.month,
-            GPS.day,
-            GPS.hour,
-            GPS.minute,
-            GPS.seconds);
-    return String(buffer); // TODO: Remove String() conversion when no longer required
+// Construct a logfile name using the current date and time from the GPS sensor
+const char *get_logfile_name() {
+    static char buffer[50];
+    snprintf(buffer,
+             sizeof(buffer),
+             "%s_20%02d%02d%02d-%02d%02d%02d.txt",
+             LOG_FILE_NAME_PREFIX,
+             GPS.year,
+             GPS.month,
+             GPS.day,
+             GPS.hour,
+             GPS.minute,
+             GPS.seconds);
+    return buffer;
 }
 
-// Return a formatted current date and time from the GPS sensor
-String get_datetime() {
-    char buffer[50];
-    sprintf(buffer,
-            "20%02d-%02d-%02dT%02d:%02d:%02d.%03dZ",
-            GPS.year,
-            GPS.month,
-            GPS.day,
-            GPS.hour,
-            GPS.minute,
-            GPS.seconds,
-            GPS.milliseconds);
-    return String(buffer); // TODO: Remove String() conversion when no longer required
+// Construct a formatted current date and time from the GPS sensor
+const char *get_datetime() {
+    static char buffer[50];
+    snprintf(buffer,
+             sizeof(buffer),
+             "20%02d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+             GPS.year,
+             GPS.month,
+             GPS.day,
+             GPS.hour,
+             GPS.minute,
+             GPS.seconds,
+             GPS.milliseconds);
+    return buffer;
 }
 
 // Encrypt a block of text
