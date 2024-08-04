@@ -84,10 +84,18 @@ void rainbowLED(unsigned int dur);
 void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times);
 
 // Print messsage to the serial console and the syslog file
-void syslog(const char message[]);
-void syslog(String message) {
-    syslog(message.c_str());
-};
+//
+// A timestamp is appended and a newline appended. Then the syslog file is
+// flushed.
+template <typename Any>
+void syslog(Any message);
+
+// Print a formatted messsage to the serial console and the syslog file
+//
+// The `message` is formatted using the arguments that follow. A timestamp is
+// appended and a newline appended. Then the syslog file is flushed.
+template <typename... Args>
+void syslog(const char *message, Args... arguments);
 
 int wifiSetUp();
 void powerOff();

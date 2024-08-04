@@ -248,7 +248,7 @@ void setup() {
     char datetime_c[datetime_l];
     datetime_s.toCharArray(datetime_c, datetime_l);
 
-    syslog(String("GPS clock is set to: ") + datetime_c);
+    syslog("GPS clock is set to: %s", datetime_c);
 
     // set the log file name
     log_file_name = get_logfile_name();
@@ -264,10 +264,10 @@ void setup() {
 
     // check to see if the file opened ok!
     if (myFile) {
-        syslog(String("Created log file: ") + log_file_name_ca);
+        syslog("Created log file: %s", log_file_name_ca);
         statusLED(75, 75, 125, true, 2);
     } else {
-        syslog(String("Error - Count not create log file: ") + log_file_name_ca);
+        syslog("Error - Count not create log file: %s", log_file_name_ca);
         statusLED(75, 75, 125, false, 10);
     }
 
@@ -551,7 +551,7 @@ void loop() {
                     delay(fileFlashDelay);
                 }
 
-                syslog(String(numFiles) + " to be uploaded");
+                syslog("%s to be uploaded", numFiles);
 
                 filesRoot.close();
 
@@ -594,13 +594,13 @@ void loop() {
 
                             // check to see if it deleted ok
                             if (SD.exists(log_file.name())) {
-                                syslog(String("Warning - could not delete ") + log_file.name());
+                                syslog("Warning - could not delete %s", log_file.name());
                             } else {
-                                syslog(String("Successfully deleted ") + log_file.name());
+                                syslog("Successfully deleted %s", log_file.name());
                             }
                         } else {
                             log_file.close();
-                            syslog(String("Warning - could not copy ") + log_file.name());
+                            syslog("Warning - could not copy %s", log_file.name());
                         }
                     }
 
@@ -613,7 +613,7 @@ void loop() {
                 syslog("All Data files uploaded");
 
                 // need to post to the sys log file, and then close and reopen it for reading
-                syslog(String(SYSTEM_LOG_FILE_NAME) + " will now be uploaded, after which the system will shutdown");
+                syslog(SYSTEM_LOG_FILE_NAME " will now be uploaded, after which the system will shutdown");
                 sysLogFile.close(); // TODO: Just seek(0) ?
                 sysLogFile = SD.open(SYSTEM_LOG_FILE_NAME, FILE_READ);
 
@@ -746,15 +746,31 @@ void statusLED(int redLED, int greenLED, int blueLED, bool stat, int times) {
 }
 
 // Print messsage to the serial console and the syslog file
-void syslog(const char message[]) {
+//
+// A timestamp is appended and a newline appended. Then the syslog file is
+// flushed.
+template <typename Any>
+void syslog(Any message) {
+    syslog("%s", message);
+}
+
+// Print a formatted messsage to the serial console and the syslog file
+//
+// The `arguments` are formatted using the `format` character array. A timestamp
+// is appended and a newline appended. Then the syslog file is flushed.
+template <typename... Args>
+void syslog(const char *message, Args... arguments) {
     char millis_s[14];
     sprintf(millis_s, "%010lu - ", millis());
     Serial.print(millis_s);
-    sysLogFile.write(millis_s);
+    sysLogFile.print(millis_s);
 
-    Serial.println(message);
-    sysLogFile.write(message);
-    sysLogFile.write('\n');
+    Serial.printf(message, arguments...);
+    sysLogFile.printf(message, arguments...);
+
+    Serial.println();
+    sysLogFile.println();
+
     sysLogFile.flush();
 }
 
@@ -782,8 +798,7 @@ int wifiSetUp() {
         pass_s.toCharArray(pass, pass_s.length() + 1);
 
         if (wifiNetworks(ssid)) {
-            syslog(String(numSsid) + " networks found, including " +
-                   ssid + " trying to connect.");
+            syslog("%s networks found, including %s trying to connect.", numSsid, ssid);
 
             // try and connect to the matching network we have found
             // we are going to stop after a given number of attempts,
@@ -847,9 +862,7 @@ void printWifiStatus() {
 
     ltoa(rssi_l, rssi_ca, 10);
 
-    syslog(String("SSID: ") + WiFi.SSID() +
-           "; IP Address: " + ip_ca +
-           "; RSSI: " + rssi_ca + " dBm");
+    syslog("SSID: %s; IP Address: %s; RSSI: %s dBm", WiFi.SSID(), ip_ca, rssi_ca);
 }
 
 // a function to convert the IP address to a char[]
@@ -871,8 +884,7 @@ int uploadFile(File log_file, const bool sysFile) {
     Serial.print(log_file.size());
     Serial.println();
 
-    syslog(String("Attempting to upload ") + log_file.name() +
-           " (" + log_file_size_string + " Bytes)");
+    syslog("Attempting to upload %s (%s Bytes)", log_file.name(), log_file_size_string);
 
     // we are going to check to see if connection was successfull
     // and then do something different it it wasn't.
@@ -917,7 +929,7 @@ int uploadFile(File log_file, const bool sysFile) {
                                          // backend knows which key to use for decryption.
         strcat(post_address, "/");
 
-        syslog(String("Uploading to: ") + post_address);
+        syslog("Uploading to: %s", post_address);
 
         httpclient.post(post_address);
 
@@ -968,7 +980,7 @@ int uploadFile(File log_file, const bool sysFile) {
         httpclient.endRequest();
         Serial.println();
 
-        syslog(String("Number of Bytes Uploaded: ") + fileSizeCount);
+        syslog("Number of Bytes Uploaded: %s", fileSizeCount);
 
         // printing the http status code.
         int statusCode = httpclient.responseStatusCode();
@@ -983,7 +995,7 @@ int uploadFile(File log_file, const bool sysFile) {
         Serial.println(httpresponse);
 
         if (statusCode == 200) {
-            syslog(String("Upload successful, response code: ") + statusCode);
+            syslog("Upload successful, status code: %s", statusCode);
 
             statusLED(255, 0, 255, true, 3);
 
@@ -991,7 +1003,7 @@ int uploadFile(File log_file, const bool sysFile) {
             return 0;
         } else {
             // some status code was recieved that means it didn't work.
-            syslog(String("ERROR, upload failed with status code: ") + statusCode);
+            syslog("ERROR, upload failed with status code: %s", statusCode);
 
             statusLED(255, 0, 255, false, 3);
             // return a non-zero because things didn't work
@@ -1015,8 +1027,7 @@ int copyFile(File log_file) {
 
     // check to see if this archive file already exists,
     while (SD.exists(archiveFileName)) {
-        syslog(String("Warning - ") + archiveFileName +
-               " already exisits, trying different name.");
+        syslog("Warning - %s already exists, trying different name.", archiveFileName);
 
         // if it does exist then we are going to prepend a "random" number,
         // this is not actually random, but it doesn't matter.
@@ -1035,7 +1046,7 @@ int copyFile(File log_file) {
     archiveFile = SD.open(archiveFileName_s.c_str(), FILE_WRITE);
 
     if (archiveFile) {
-        syslog(String("Successfully opened archive file: ") + archiveFileName);
+        syslog("Successfully opened archive file: %s", archiveFileName);
     } else {
         syslog("Warning - archive file did not open");
     }
@@ -1086,16 +1097,12 @@ int copyFile(File log_file) {
     // check to see if the file was copied across being seeing the input and outfile
     // are the same size
     if (log_file.size() == archiveFile.size()) {
-        syslog(String(log_file.name()) + " successfully copied to " +
-               ARCHIVE_FOLDER + "/" + archiveFile.name());
+        syslog("%s successfully copied to %s/%s", log_file.name(), ARCHIVE_FOLDER, archiveFile.name());
 
         archiveFile.close();
         return 0;
     } else {
-        syslog(String("Warning - ") + log_file.name() +
-               " and " + archiveFile.name() +
-               " are not the same size. " +
-               log_file.size() + " vs " + archiveFile.size());
+        syslog("Warning - %s and %s are not the same size. %d vs %d", log_file.name(), archiveFile.name(), log_file.size(), archiveFile.size());
         archiveFile.close();
         return 1;
     }
