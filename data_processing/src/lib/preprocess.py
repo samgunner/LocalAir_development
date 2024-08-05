@@ -29,7 +29,7 @@ def _convert_ddmm_to_degrees(ddmm):
     ddmm format is an int with the first 2 or 3 digits representing the
     number of degrees, then the last 2 digits representing the minutes,
     which are at most 59.
-    
+
     Examples:
 
     >>> convert_ddmm_to_degrees(3430)
@@ -44,12 +44,14 @@ def _convert_ddmm_to_degrees(ddmm):
 
 def _convert_dtypes(df):
     df = df.mask(df == '-')
-    df['GPS.fix'] = df['GPS.fix'] == 'True'
+    # This conversion is no longer required
+    # df.loc[df['GPS.fix'] == 'False', 'GPS.fix'] = False  # legacy support (now a bool)
     df = df.astype({
         'datetime': 'datetime64[ns, UTC]',  # assume negligible difference between GPS time and UTC
         'GPS.fix': 'boolean',
         'GPS.location.lat': 'Float64',
         'GPS.location.long': 'Float64',
+        'GPS.location.hdop': 'Float64',
         'GPS.location.alt': 'Float64',
         'GPS.speed': 'Float64',
         'GPS.angle': 'Float64',
@@ -102,8 +104,9 @@ def _convert_dtypes(df):
         'FFT.1505Hz': 'Float64',
         'FFT.1548Hz': 'Float64',
     })
-    df['GPS.location.lat'] = df['GPS.location.lat'].pipe(_convert_ddmm_to_degrees)
-    df['GPS.location.long'] = -df['GPS.location.long'].pipe(_convert_ddmm_to_degrees)  # assume degrees WEST
+    # These conversions are no longer required (lat/lon are correctly-signed floats in degrees)
+    # df['GPS.location.lat'] = df['GPS.location.lat'].pipe(_convert_ddmm_to_degrees)
+    # df['GPS.location.long'] = -df['GPS.location.long'].pipe(_convert_ddmm_to_degrees)  # assume degrees WEST
     return df
 
 
