@@ -42,6 +42,9 @@ void setup_GPS(Adafruit_GPS &GPS);
 // Takes the FFT data object to be used for audio analysis.
 void setup_audio(AudioAnalyzeFFT1024 &FFT_data);
 
+// Delay execution until a time is avaialble from the GPS sensor
+void wait_for_GPS_time(Adafruit_GPS &GPS);
+
 // Print messsage to the serial console and the syslog file
 //
 // A timestamp is appended and a newline appended. Then the syslog file is
@@ -59,8 +62,8 @@ void syslog(const char *message, Args... arguments);
 // Like builtin delay function, with the addition of a rainbow LED effect
 void delay_with_rainbow_LED(unsigned int dur);
 
-#define STATUS_LED_SUCCESS true
-#define STATUS_LED_FAILURE false
+#define STATUS_SUCCESS true
+#define STATUS_FAILURE false
 
 // Flash the status LED
 //
@@ -69,7 +72,7 @@ void delay_with_rainbow_LED(unsigned int dur);
 //
 // Colours should be specified as integers between 0 and 255. Default is white
 // then green (for success), flashed once.
-void flash_status_LED(const int red = 255, const int green = 255, const int blue = 255, const bool status = STATUS_LED_SUCCESS, const int times = 1);
+void flash_status_LED(const int red = 255, const int green = 255, const int blue = 255, const bool status = STATUS_SUCCESS, const int times = 1);
 
 // TODO: doc
 int wifiSetUp();

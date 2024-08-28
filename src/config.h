@@ -24,17 +24,18 @@
 #define ENCRYPT true // flag to weather to encrypt onto the SD card or not
 
 // and the encryption key information
-#define SPECKKEYSIZE 32
+#define SPECK_KEY_SIZE 32
 
 // below a variable that defines the number of bytes is a single line of the encrupted file.
-int line_length = 960;
+#define LINE_LENGTH 960
 
 /* the sensitivity of the accelerometer interupt */
 #define ACCEL_TRIG_SENSE 0x50
 
 /* Debugging flags */
 // #define DEBUG false // this turns on and off debug logging
-#define DEBUG true // TODO: Remove after debugging
+#define DEBUG true      // TODO: Remove after debugging
+#define DEBUG_FFT false // Output live FFT data to the serial console
 #define CHECK_GPS_DATETIME false
 // #define AUTO_POWER_OFF true
 #define AUTO_POWER_OFF false // TODO: Remove after debugging
