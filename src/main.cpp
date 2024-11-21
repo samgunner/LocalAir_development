@@ -114,8 +114,6 @@ File syslog_file;
 #define LED_PIN_B (6) // the Blue LED pin
 
 // ****************************************************************************
-// Software setup
-// ****************************************************************************
 
 // Encryption
 #include <Speck.h>
@@ -128,7 +126,7 @@ Speck speck;
 #include <Dictionary.h>
 
 // ****************************************************************************
-// Setup and main loop
+// Setup - prepare sensors and log files
 // ****************************************************************************
 
 void setup() {
@@ -232,7 +230,15 @@ void setup() {
     }
 }
 
+// ****************************************************************************
+// Loop - read sensors and upload log files
+// ****************************************************************************
+
 void loop() {
+    // ****************************************************************************
+    // Collect new sensor data
+    // ****************************************************************************
+
     particulate_sensor.read(particulate_data); // TODO: why is this here and not lower down?
     GPS.read();                                // TODO: why is this here and not lower down?
 
@@ -315,6 +321,10 @@ void loop() {
     serializeJson(json_document, serialized_json);
     Serial.println(serialized_json);
 
+    // ****************************************************************************
+    // Write data to the log file on the SD card
+    // ****************************************************************************
+
     if (ENCRYPT) {
         byte plaintext_buffer[17]; // TODO: why is this 17 (16 + null terminator?)
         byte encrypted_buffer[16];
@@ -340,7 +350,11 @@ void loop() {
         datalog_file.flush();
     }
 
-    // Check for Wi-Fi if a minute has passed (new seconds < old seconds)
+    // ****************************************************************************
+    // Upload log files (data + syslog) via Wi-Fi
+    // ****************************************************************************
+
+    // Only check for Wi-Fi at the start of each minute on the clock (new seconds < old seconds)
     if (GPS.seconds < last_seconds) {
         if (wifiSetUp() == WL_CONNECTED) {
             // Disable the FFT to see if this stops some of the funny behaviour
@@ -350,121 +364,82 @@ void loop() {
             datalog_file.close();
             if (DEBUG) Serial.println("Debug - log file closed");
 
-            // we're going to try and upload all the files!... how exiting
-
-            // first we are going to count the numebr of files there are on the SD card.
-            // for the record, I am not worry about folders... hopefully there won't be any
-
-            int numFiles = 0;
-
-            File filesRoot = SD.open("/");
-
+            // Count the number of datalog files there are on the SD card, before we try
+            // to upload any of them. Assume they are all in the root directory.
             if (DEBUG) Serial.println("Debug - opening SD card root");
-
+            File root_dir = SD.open("/");
+            int num_files = 0;
             while (true) {
                 if (DEBUG) Serial.println("Debug - about to open Next File");
-
-                File log_file = filesRoot.openNextFile();
-
+                File file = root_dir.openNextFile();
                 if (DEBUG) Serial.println("Debug - opened Next File");
 
-                if (!log_file) {
+                if (!file) {
                     if (DEBUG) Serial.println("Debug - No more files, breaking loop");
                     break;
                 }
 
-                // don't upload the system log file stragiht away.
-                if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+                // Don't count syslog file or directories
+                if (strcmp(file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
                     if (DEBUG) Serial.println("Debug - SysLog found, skipping");
                     continue;
                 }
-
-                // check to see if it is the archive directory, and if so move on.
-                if (log_file.isDirectory()) {
+                if (file.isDirectory()) {
                     if (DEBUG) Serial.println("Debug - directory found, skipping");
                     continue;
                 }
 
-                // and increment the counter
-                numFiles++;
+                num_files++;
             }
+            root_dir.close();
 
-            analogWrite(LED_PIN_R, 0);
-            analogWrite(LED_PIN_G, 0);
-            analogWrite(LED_PIN_B, 0);
+            syslog("%s data log files to be uploaded", num_files);
 
-            int fileFlashDelay = 100;
+            // Flash the LED to indicate the number of files to be uploaded
+            flash_status_LED(123, 231, 78, STATUS_SUCCESS, num_files);
 
-            // now we flash the LED that number of times.
-            for (int i = 0; i < numFiles; i++) {
-                analogWrite(LED_PIN_R, 123);
-                analogWrite(LED_PIN_G, 231);
-                analogWrite(LED_PIN_B, 78);
-
-                delay(fileFlashDelay);
-
-                analogWrite(LED_PIN_R, 0);
-                analogWrite(LED_PIN_G, 0);
-                analogWrite(LED_PIN_B, 0);
-
-                delay(fileFlashDelay);
-            }
-
-            syslog("%s to be uploaded", numFiles);
-
-            filesRoot.close();
-
-            // we are now going to do the same thing again,  but this time upload the files as we go.
-            filesRoot = SD.open("/");
-
+            // The second time round, upload the data files
+            root_dir = SD.open("/");
             while (true) {
-                File log_file = filesRoot.openNextFile();
+                File file = root_dir.openNextFile();
 
-                if (!log_file) {
+                if (!file) {
                     break;
                 }
-
-                // don't upload the system log file stragiht away.
-                if (strcmp(log_file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+                if (strcmp(file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+                    continue;
+                }
+                if (file.isDirectory()) {
                     continue;
                 }
 
-                // check to see if it is the archive directory, and if so move on.
-                if (log_file.isDirectory()) {
-                    continue;
-                }
-
-                // upload this log_file
-                int upload_return = uploadFile(log_file);
-
-                // we are going to check the return code of the uploadFile function
-                // to see if things actually uploaded.
-                if (upload_return == 0) {
+                if (upload_file(file)) {
                     // and since we don't yet have a good way of checking that the upload
                     // has worked we are going instead to try and copy to an archive folder
                     // on the SD card.
-                    if (copyFile(log_file) == 0) {
+                    if (archive_file(file)) {
                         // this means the copy worked and so we can delete the file
-                        Serial.println(log_file.name()); // <- for some reason it stops working when I remvoe this
+                        Serial.println(file.name()); // <- for some reason it stops working when I remvoe this
 
                         // close and delete the log file
-                        log_file.close();
-                        SD.remove(log_file.name());
+                        file.close();
+                        SD.remove(file.name());
 
                         // check to see if it deleted ok
-                        if (SD.exists(log_file.name())) {
-                            syslog("Warning - could not delete %s", log_file.name());
+                        if (SD.exists(file.name())) {
+                            syslog("Warning - could not delete %s", file.name());
                         } else {
-                            syslog("Successfully deleted %s", log_file.name());
+                            syslog("Successfully deleted %s", file.name());
                         }
                     } else {
-                        log_file.close();
-                        syslog("Warning - could not copy %s", log_file.name());
+                        file.close();
+                        syslog("Warning - could not copy %s", file.name());
                     }
                 }
 
-                log_file.close();
+                file.close();
             }
+            root_dir.close();
 
             // we can't, as yet, tell if the file upload was a success, and so we are
             // going to have to just shut down and hope for the best
@@ -476,7 +451,7 @@ void loop() {
             syslog_file.close(); // TODO: Just seek(0) ?
             syslog_file = SD.open(SYSTEM_LOG_FILE_NAME, FILE_READ);
 
-            int upload_status = uploadFile(syslog_file, true);
+            int upload_status = upload_file(syslog_file, true);
 
             if (upload_status == 0) {
                 flash_status_LED(255, 215, 0, true, 5); // Log file uploaded
@@ -664,6 +639,8 @@ void delay_with_rainbow_LED(unsigned int duration) {
 
 #define STATUS_LED_DELAY 500
 void flash_status_LED(const int red, const int green, const int blue, const bool status, const int times) {
+    delay(STATUS_LED_DELAY);
+
     for (int i = 0; i < times; i++) {
         analogWrite(LED_PIN_R, red);
         analogWrite(LED_PIN_G, green);
@@ -813,7 +790,7 @@ String IpAddress2String(const IPAddress &ipAddress) {
 }
 
 // a function for uploading the data file to the server
-int uploadFile(File file, const bool sysFile) {
+bool upload_file(File file, const bool is_syslog) {
     // we are now going to upload to James's server, using SSL of all things
 
     char file_size_string[7];
@@ -857,7 +834,7 @@ int uploadFile(File file, const bool sysFile) {
         char post_address[50];
         strcpy(post_address, "/");
 
-        if (sysFile) {
+        if (is_syslog) {
             strcat(post_address, "la_syslog"); // this is where a new location to send the sysLog file wil go
         } else {
             strcat(post_address, "la_data");
@@ -935,25 +912,20 @@ int uploadFile(File file, const bool sysFile) {
 
         if (statusCode == 200) {
             syslog("Upload successful, status code: %s", statusCode);
-
             flash_status_LED(255, 0, 255, true, 3);
-
-            // return a zero because things worked
-            return 0;
+            return true;
         } else {
             // some status code was recieved that means it didn't work.
             syslog("ERROR, upload failed with status code: %s", statusCode);
-
             flash_status_LED(255, 0, 255, false, 3);
-            // return a non-zero because things didn't work
-            return 1;
+            return false;
         }
     }
 }
 
 // rather than deleting a file after up load we are going to move the file
 // into an archive folder
-int copyFile(File file) {
+bool archive_file(File file) {
     // check to see if the archive dir exisits.
     if (!SD.exists(ARCHIVE_FOLDER)) {
         SD.mkdir(ARCHIVE_FOLDER);
@@ -1037,13 +1009,12 @@ int copyFile(File file) {
     // are the same size
     if (file.size() == archiveFile.size()) {
         syslog("%s successfully copied to %s/%s", file.name(), ARCHIVE_FOLDER, archiveFile.name());
-
         archiveFile.close();
-        return 0;
+        return true;
     } else {
         syslog("Warning - %s and %s are not the same size. %d vs %d", file.name(), archiveFile.name(), file.size(), archiveFile.size());
         archiveFile.close();
-        return 1;
+        return false;
     }
 }
 

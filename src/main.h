@@ -84,10 +84,10 @@ void power_off();
 void printWifiStatus();
 
 // TODO: doc
-int uploadFile(File file, const bool sysFile = false);
+bool upload_file(File file, const bool is_syslog = false);
 
 // TODO: doc
-int copyFile(File file);
+bool archive_file(File file);
 
 // TODO: doc
 String IpAddress2String(const IPAddress &ipAddress);
