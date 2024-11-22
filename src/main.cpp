@@ -872,7 +872,9 @@ bool upload_file(File file, const bool is_syslog) {
             //client.print('\n');
             */
             auto line = file.readStringUntil('\n');
-            httpclient.println(line);
+            httpclient.print(line);
+            httpclient.print('\n'); // Cannot use .println() as this outputs \r\n (in the HTTP spec)
+                                    // and we only want \n as a line ending here
 
             // trying to count the amount of data that has been uploaded
             // fileSizeCount = fileSizeCount + LINE_LENGTH*2+1;
