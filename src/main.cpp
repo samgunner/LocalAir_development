@@ -393,7 +393,7 @@ void loop() {
             }
             root_dir.close();
 
-            syslog("%s data log files to be uploaded", num_files);
+            syslog("%d data log files to be uploaded", num_files);
 
             // Flash the LED to indicate the number of files to be uploaded
             flash_status_LED(123, 231, 78, STATUS_SUCCESS, num_files);
@@ -709,7 +709,7 @@ int wifiSetUp() {
         pass_s.toCharArray(pass, pass_s.length() + 1);
 
         if (wifiNetworks(ssid)) {
-            syslog("%s networks found, including %s trying to connect.", numSsid, ssid);
+            syslog("%d networks found, including %s trying to connect.", numSsid, ssid);
 
             // try and connect to the matching network we have found
             // we are going to stop after a given number of attempts,
@@ -896,7 +896,7 @@ bool upload_file(File file, const bool is_syslog) {
         httpclient.endRequest();
         Serial.println();
 
-        syslog("Number of Bytes Uploaded: %s", fileSizeCount);
+        syslog("Number of Bytes Uploaded: %d", fileSizeCount);
 
         // printing the http status code.
         int statusCode = httpclient.responseStatusCode();
@@ -907,16 +907,16 @@ bool upload_file(File file, const bool is_syslog) {
         analogWrite(LED_PIN_G, 0);
         analogWrite(LED_PIN_B, 0);
 
-        Serial.print("Responce: ");
+        Serial.print("Response: ");
         Serial.println(httpresponse);
 
         if (statusCode == 200) {
-            syslog("Upload successful, status code: %s", statusCode);
+            syslog("Upload successful, status code: %d", statusCode);
             flash_status_LED(255, 0, 255, true, 3);
             return true;
         } else {
             // some status code was recieved that means it didn't work.
-            syslog("ERROR, upload failed with status code: %s", statusCode);
+            syslog("ERROR, upload failed with status code: %d", statusCode);
             flash_status_LED(255, 0, 255, false, 3);
             return false;
         }
