@@ -213,8 +213,8 @@ void setup() {
 
     const char *datalog_file_name = get_logfile_name();
 
-    syslog("Creating datalog file %s", datalog_file_name);
-    datalog_file = SD.open(datalog_file_name, FILE_WRITE);
+    // TODO - re-enable // syslog("Creating datalog file %s", datalog_file_name);
+    // TODO - re-enable // datalog_file = SD.open(datalog_file_name, FILE_WRITE);
     delay(100); // Let things settle
     if (datalog_file) {
         syslog("Created log file");
@@ -222,7 +222,7 @@ void setup() {
     } else {
         syslog("Failed to create log file");
         flash_status_LED(75, 75, 125, STATUS_FAILURE, 10);
-        power_off();
+        // TODO - re-enable // power_off();
     }
 
     if (ENCRYPT) {
@@ -355,7 +355,9 @@ void loop() {
     // ****************************************************************************
 
     // Only check for Wi-Fi at the start of each minute on the clock (new seconds < old seconds)
-    if (GPS.seconds < last_seconds) {
+    // TODO - re-enable // if (GPS.seconds < last_seconds) {
+    if (true) {
+        if (DEBUG) Serial.println("Checking for Wi-Fi");
         if (wifiSetUp() == WL_CONNECTED) {
             // Disable the FFT to see if this stops some of the funny behaviour
             AudioNoInterrupts();
@@ -402,11 +404,13 @@ void loop() {
             root_dir = SD.open("/");
             while (true) {
                 File file = root_dir.openNextFile();
+                char filename[40];
+                strcpy(filename, file.name()); // keep file.name() as it is empty after close()
 
                 if (!file) {
                     break;
                 }
-                if (strcmp(file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+                if (strcmp(filename, SYSTEM_LOG_FILE_NAME) == 0) {
                     continue;
                 }
                 if (file.isDirectory()) {
@@ -419,21 +423,21 @@ void loop() {
                     // on the SD card.
                     if (archive_file(file)) {
                         // this means the copy worked and so we can delete the file
-                        Serial.println(file.name()); // <- for some reason it stops working when I remvoe this
+                        Serial.println(filename); // <- for some reason it stops working when I remvoe this
 
                         // close and delete the log file
-                        file.close();
-                        SD.remove(file.name());
+                        file.close(); // NB can no longer use properties of file (like .name()) after this point
+                        SD.remove(filename);
 
                         // check to see if it deleted ok
-                        if (SD.exists(file.name())) {
-                            syslog("Warning - could not delete %s", file.name());
+                        if (SD.exists(filename)) {
+                            syslog("Warning - could not delete %s", filename);
                         } else {
-                            syslog("Successfully deleted %s", file.name());
+                            syslog("Successfully deleted %s", filename);
                         }
                     } else {
                         file.close();
-                        syslog("Warning - could not copy %s", file.name());
+                        syslog("Warning - could not copy %s", filename);
                     }
                 }
 
@@ -462,9 +466,8 @@ void loop() {
             /* just clear any interupts there might be on the acceleromter */
             int_resp = accelerometer.checkInterrupts();
 
-            Serial.println("Shutting Down");
-
-            power_off();
+            // TODO - re-enable // Serial.println("Shutting Down");
+            // TODO - re-enable // power_off();
         }
 
         /* we are now going to check the interupts on the accelerometer
@@ -486,7 +489,8 @@ void loop() {
         }
 
         // if the activity counter has got to zero then turn off
-        if (activity_counter < 1) {
+        // TODO - re-enable // if (activity_counter < 1) {
+        if (false) {
             syslog("No movement Detected for 5 minutes, switching off");
 
             syslog_file.close();
@@ -709,6 +713,7 @@ int wifiSetUp() {
         pass_s.toCharArray(pass, pass_s.length() + 1);
 
         if (wifiNetworks(ssid)) {
+            if (DEBUG) Serial.println("Listing Wi-Fi networks");
             syslog("%d networks found, including %s trying to connect.", numSsid, ssid);
 
             // try and connect to the matching network we have found
@@ -947,8 +952,9 @@ bool archive_file(File file) {
         char rand_s[10];
         itoa(random(999), rand_s, 10);
         strcpy(archiveFileName, ARCHIVE_FOLDER);
-        strcat(archiveFileName, "/id");
+        strcat(archiveFileName, "/");
         strcat(archiveFileName, rand_s);
+        strcat(archiveFileName, "_");
         strcat(archiveFileName, file.name());
     }
 
