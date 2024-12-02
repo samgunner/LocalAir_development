@@ -796,10 +796,6 @@ bool upload_file(File file, const bool is_syslog) {
     char file_size_string[7];
     itoa(file.size(), file_size_string, 10);
 
-    Serial.print("NOT LOGGED - File size: ");
-    Serial.print(file.size());
-    Serial.println();
-
     syslog("Attempting to upload %s (%s Bytes)", file.name(), file_size_string);
 
     // we are going to check to see if connection was successfull
