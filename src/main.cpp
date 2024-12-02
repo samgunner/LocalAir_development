@@ -396,7 +396,7 @@ void loop() {
             syslog("%d data log files to be uploaded", num_files);
 
             // Flash the LED to indicate the number of files to be uploaded
-            flash_status_LED(123, 231, 78, STATUS_SUCCESS, num_files);
+            // TODO - should this be re-enabled? // flash_status_LED(123, 231, 78, STATUS_SUCCESS, num_files);
 
             // The second time round, upload the data files
             root_dir = SD.open("/");
