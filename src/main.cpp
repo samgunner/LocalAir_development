@@ -402,11 +402,13 @@ void loop() {
             root_dir = SD.open("/");
             while (true) {
                 File file = root_dir.openNextFile();
+                char filename[40];
+                strcpy(filename, file.name()); // keep file.name() as it is empty after close()
 
                 if (!file) {
                     break;
                 }
-                if (strcmp(file.name(), SYSTEM_LOG_FILE_NAME) == 0) {
+                if (strcmp(filename, SYSTEM_LOG_FILE_NAME) == 0) {
                     continue;
                 }
                 if (file.isDirectory()) {
@@ -419,21 +421,21 @@ void loop() {
                     // on the SD card.
                     if (archive_file(file)) {
                         // this means the copy worked and so we can delete the file
-                        Serial.println(file.name()); // <- for some reason it stops working when I remvoe this
+                        Serial.println(filename); // <- for some reason it stops working when I remvoe this
 
                         // close and delete the log file
-                        file.close();
-                        SD.remove(file.name());
+                        file.close(); // NB can no longer use properties of file (like .name()) after this point
+                        SD.remove(filename);
 
                         // check to see if it deleted ok
-                        if (SD.exists(file.name())) {
-                            syslog("Warning - could not delete %s", file.name());
+                        if (SD.exists(filename)) {
+                            syslog("Warning - could not delete %s", filename);
                         } else {
-                            syslog("Successfully deleted %s", file.name());
+                            syslog("Successfully deleted %s", filename);
                         }
                     } else {
                         file.close();
-                        syslog("Warning - could not copy %s", file.name());
+                        syslog("Warning - could not copy %s", filename);
                     }
                 }
 
@@ -943,8 +945,9 @@ bool archive_file(File file) {
         char rand_s[10];
         itoa(random(999), rand_s, 10);
         strcpy(archiveFileName, ARCHIVE_FOLDER);
-        strcat(archiveFileName, "/id");
+        strcat(archiveFileName, "/");
         strcat(archiveFileName, rand_s);
+        strcat(archiveFileName, "_");
         strcat(archiveFileName, file.name());
     }
 
