@@ -34,7 +34,7 @@
 /* Debugging flags */
 #define DEBUG false     // this turns on and off debug logging
 #define DEBUG_FFT false // Output live FFT data to the serial console
-#define CHECK_GPS_DATETIME false
+#define CHECK_GPS_DATETIME true
 #define AUTO_POWER_OFF true
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
