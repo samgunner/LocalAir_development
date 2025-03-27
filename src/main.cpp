@@ -69,7 +69,7 @@ int status = WL_IDLE_STATUS;
 // use the numeric IP instead of the name for the server:
 //IPAddress server(74,125,232,128);  // numeric IP for Google (no DNS)
 
-#define SERVER "london.localair.uk"
+#define SERVER "debug.localair.uk"
 #define PATH   "/la_data/LA_999/"
 
 // Initialize the SSL client library
@@ -130,29 +130,26 @@ void setup() {
   Serial.println("Connected to wifi");
   printWifiStatus();
 
-  String body = "{ \"This is a test\": 500 }";
+  String body = "{ \"This is still very much a test\": 500 }";
 
   Serial.print("body.length(): ");
   Serial.println(body.length());
 
   Serial.println("\nStarting connection to server...");
   // if you get a connection, report back via serial:
-  if (client.connect(SERVER, 443)) {
+  if (client.connectSSL(SERVER, 443)) {
     Serial.println("connected to server");
     // Make a HTTP request:
-    client.print("POST ");
-    client.print(PATH);
-    client.println(" HTTP/1.1");
-    client.print("Host: ");
-    client.println(SERVER);
-    client.println("Content-Type: application/text");
-    //client.println("Content-Length: " + String(body.length()));
-    client.println("Content-Length: 3");
+    client.println("POST " PATH " HTTP/1.1");
+    client.println("Host: " SERVER);
+    client.println("Content-Type: application/json");
+    client.println("Content-Length: " + String(body.length()+2));
+    //client.println("Content-Length: 3");
     client.println("Connection: close");
 
     client.println();
 
-    client.println("What happens if I put the text straight in here?");
+    client.println(body);
 
     //client.println();
     //client.flush();
