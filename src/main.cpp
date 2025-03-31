@@ -12,6 +12,7 @@ last revision November 2015
 
 #include <SPI.h>
 #include <WiFiNINA.h>
+#include <SD.h>
 
 // Configure the pins used for the ESP32 connection
 #if defined(ADAFRUIT_FEATHER_M4_EXPRESS) || \
@@ -72,6 +73,8 @@ int status = WL_IDLE_STATUS;
 #define SERVER "debug.localair.uk"
 #define PATH   "/la_data/LA_999/"
 
+#define FILENAME "LAD_231019-222431.txt"
+
 // Initialize the SSL client library
 // with the IP address and port of the server
 // that you want to connect to (port 443 is default for HTTPS):
@@ -100,6 +103,12 @@ void setup() {
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
+
+  if (!SD.begin(9)) {
+    Serial.println("initialization failed!");
+    while (1);
+  }
+  Serial.println("initialization done.");
 
   Serial.print("SPIWIFI_SS: ");
   Serial.println(SPIWIFI_SS);
@@ -130,10 +139,17 @@ void setup() {
   Serial.println("Connected to wifi");
   printWifiStatus();
 
-  String body = "{ \"This is still very much a test\": 500 }";
+  // open the file. note that only one file can be open at a time,
+  // so you have to close this one before opening another.
+  File myFile;
+  myFile = SD.open(FILENAME, FILE_READ);
+  if (myFile) {
+    Serial.print(FILENAME);
+    Serial.println(" opened successfully");
+  }
 
-  Serial.print("body.length(): ");
-  Serial.println(body.length());
+  Serial.println("File size: ");
+  Serial.print(myFile.size());
 
   Serial.println("\nStarting connection to server...");
   // if you get a connection, report back via serial:
@@ -142,14 +158,26 @@ void setup() {
     // Make a HTTP request:
     client.println("POST " PATH " HTTP/1.1");
     client.println("Host: " SERVER);
-    client.println("Content-Type: application/json");
-    client.println("Content-Length: " + String(body.length()+2));
+    client.println("Content-Type: text/plain");
+    client.println("Content-Length: " + String(myFile.size()));
     //client.println("Content-Length: 3");
     client.println("Connection: close");
 
     client.println();
 
-    client.println(body);
+    while (myFile.available()) {
+      auto line = myFile.readStringUntil('\n');
+      Serial.print('.');
+      delay(100);
+      client.print(line);
+      client.print('\n');
+    }
+    client.println();
+    client.println();
+    client.flush();
+    Serial.println();
+
+    myFile.close();
 
     //client.println();
     //client.flush();
