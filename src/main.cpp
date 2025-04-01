@@ -73,7 +73,7 @@ int status = WL_IDLE_STATUS;
 #define SERVER "debug.localair.uk"
 #define PATH   "/la_data/LA_999/"
 
-#define FILENAME "LAD_231019-222431.txt"
+#define FILENAME "worked_all.txt"
 
 // Initialize the SSL client library
 // with the IP address and port of the server
