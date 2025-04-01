@@ -79,8 +79,9 @@ int status = WL_IDLE_STATUS;
 // Initialize the SSL client library
 // with the IP address and port of the server
 // that you want to connect to (port 443 is default for HTTPS):
-WiFiClient client;
-
+WiFiSSLClient client;
+#define HTTP_PORT 443
+//#define HTTP_PORT 80
 
 void printWifiStatus() {
     // print the SSID of the network you're attached to:
@@ -150,7 +151,7 @@ uint32_t bytes = 0;
 void loop() {
 
   // tyring to use the HTTPClient Library again.
-  HttpClient httpclient = HttpClient(client, SERVER, 80);
+  HttpClient httpclient = HttpClient(client, SERVER, HTTP_PORT);
 
   bool disconnected = false;
   do {
