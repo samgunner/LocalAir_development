@@ -13,6 +13,7 @@ last revision November 2015
 #include <SPI.h>
 #include <WiFiNINA.h>
 #include <SD.h>
+#include <ArduinoHttpClient.h>
 
 // Configure the pins used for the ESP32 connection
 #if defined(ADAFRUIT_FEATHER_M4_EXPRESS) || \
@@ -73,12 +74,13 @@ int status = WL_IDLE_STATUS;
 #define SERVER "debug.localair.uk"
 #define PATH   "/la_data/LA_999/"
 
-#define FILENAME "worked_all.txt"
+#define FILENAME "workedandfailed.txt"
 
 // Initialize the SSL client library
 // with the IP address and port of the server
 // that you want to connect to (port 443 is default for HTTPS):
-WiFiSSLClient client;
+WiFiClient client;
+
 
 void printWifiStatus() {
     // print the SSID of the network you're attached to:
@@ -96,6 +98,23 @@ void printWifiStatus() {
     Serial.print(rssi);
     Serial.println(" dBm");
   }
+
+int WiFiConnect(char ssid[], char pass[]) {
+  // attempt to connect to Wifi network:
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(ssid);
+  // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+  do {
+    status = WiFi.begin(ssid, pass);
+    Serial.print(status);
+    Serial.print(" ");
+    Serial.println(WL_CONNECTED);
+    delay(100); // wait until connected
+  } while (status != WL_CONNECTED);
+  Serial.println("Connected to wifi");
+  printWifiStatus();
+  return status;
+}
 
 void setup() {
   //Initialize serial and wait for port to open:
@@ -124,86 +143,84 @@ void setup() {
   if (fv < "1.0.0") {
     Serial.println("Please upgrade the firmware");
   }
-
-  // attempt to connect to Wifi network:
-  Serial.print("Attempting to connect to SSID: ");
-  Serial.println(ssid);
-  // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-  do {
-    status = WiFi.begin(ssid, pass);
-    Serial.print(status);
-    Serial.print(" ");
-    Serial.println(WL_CONNECTED);
-    delay(100); // wait until connected
-  } while (status != WL_CONNECTED);
-  Serial.println("Connected to wifi");
-  printWifiStatus();
-
-  // open the file. note that only one file can be open at a time,
-  // so you have to close this one before opening another.
-  File myFile;
-  myFile = SD.open(FILENAME, FILE_READ);
-  if (myFile) {
-    Serial.print(FILENAME);
-    Serial.println(" opened successfully");
-  }
-
-  Serial.println("File size: ");
-  Serial.print(myFile.size());
-
-  Serial.println("\nStarting connection to server...");
-  // if you get a connection, report back via serial:
-  if (client.connectSSL(SERVER, 443)) {
-    Serial.println("connected to server");
-    // Make a HTTP request:
-    client.println("POST " PATH " HTTP/1.1");
-    client.println("Host: " SERVER);
-    client.println("Content-Type: text/plain");
-    client.println("Content-Length: " + String(myFile.size()));
-    //client.println("Content-Length: 3");
-    client.println("Connection: close");
-
-    client.println();
-
-    while (myFile.available()) {
-      auto line = myFile.readStringUntil('\n');
-      Serial.print('.');
-      delay(100);
-      client.print(line);
-      client.print('\n');
-    }
-    client.println();
-    client.println();
-    client.flush();
-    Serial.println();
-
-    myFile.close();
-
-    //client.println();
-    //client.flush();
-    //client.stop();
-  }
 }
 
 uint32_t bytes = 0;
 
 void loop() {
-  // if there are incoming bytes available
-  // from the server, read them and print them:
-  while (client.available()) {
-    char c = client.read();
-    Serial.write(c);
-    bytes++;
-  }
 
-  // if the server's disconnected, stop the client:
-  if (!client.connected()) {
-    Serial.println();
+  // tyring to use the HTTPClient Library again.
+  HttpClient httpclient = HttpClient(client, SERVER, 80);
+
+  bool disconnected = false;
+  do {
+    WiFiConnect(ssid, pass);
+
+    // open the file. note that only one file can be open at a time,
+    // so you have to close this one before opening another.
+    File myFile;
+    myFile = SD.open(FILENAME, FILE_READ);
+    if (myFile) {
+      Serial.print(FILENAME);
+      Serial.println(" opened successfully");
+    }
+
+    Serial.println("File size: ");
+    Serial.print(myFile.size());
+
+    Serial.println("\nStarting connection to server...");
+    // if you get a connection, report back via serial:
+
+    httpclient.beginRequest();
+    httpclient.post(PATH);
+    httpclient.sendHeader("Content-Type", "text/plain");
+    httpclient.sendHeader("Content-Length", String(myFile.size()));
+    httpclient.sendHeader("Connection", "close");
+
+    httpclient.beginBody();
+
+    int lineNum = 0;
+    while (myFile.available()) {
+      auto line = myFile.readStringUntil('\n');
+      if (client.connected()) {
+        Serial.print('.');
+      }
+      else {
+        Serial.print('!');
+        Serial.println();
+        Serial.println("Disconnection detected, restarting upload.");
+        disconnected = true;
+        break;
+      }
+      delay(100);
+      httpclient.print(line);
+      httpclient.print('\n');
+
+      lineNum = lineNum + 1;
+    }
+
+    httpclient.endRequest();
+
+    if (!myFile.available()) {
+      Serial.print('\n');
+
+      int statusCode = httpclient.responseStatusCode();
+      String response = httpclient.responseBody();
+
+      Serial.print("Status code: ");
+      Serial.println(statusCode);
+      Serial.print("Response: ");
+      Serial.println(response);
+    }
+
+    myFile.close();
+
     Serial.println("disconnecting from server.");
     client.stop();
-    Serial.print("Read "); Serial.print(bytes); Serial.println(" bytes");
+    WiFi.end();
 
-    // do nothing forevermore:
-    while (true);
-  }
+    delay(1000); 
+
+  } while (disconnected);
+
 }
