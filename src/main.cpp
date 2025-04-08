@@ -856,6 +856,11 @@ String IpAddress2String(const IPAddress &ipAddress) {
 
 // a function for uploading the data file to the server
 int upload_file(File file, const bool is_syslog) {
+
+
+    // now recreating the HttpClient Object for each upload.
+    HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
+
     if (DEBUG) Serial.println("Debug - Starting file upload");
     // we are now going to upload to James's server, using SSL of all things
 
@@ -863,7 +868,7 @@ int upload_file(File file, const bool is_syslog) {
         return WL_CONNECT_FAILED;
     }
 
-    char file_size_string[7];
+    char file_size_string[10];
     itoa(file.size(), file_size_string, 10);
 
     syslog("Attempting to upload %s (%s Bytes)", file.name(), file_size_string);
@@ -892,9 +897,6 @@ int upload_file(File file, const bool is_syslog) {
             ledStep = 1;
         }
 
-        // now recreating the HttpClient Object for each upload.
-        HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
-
         httpclient.beginRequest();
 
         char post_address[50];
@@ -915,10 +917,12 @@ int upload_file(File file, const bool is_syslog) {
 
         httpclient.post(post_address);
 
-        httpclient.sendHeader("Content-Length", file.size());
         // httpclient.sendHeader("Content-Length", 100);
         httpclient.sendHeader("Content-Type", "text/plain");
         // httpclient.sendHeader("Connection", "close");
+        httpclient.sendHeader("Content-Length", String(file.size()));
+
+        httpclient.sendHeader("Connection", "close");
 
         httpclient.beginBody();
 
@@ -928,16 +932,20 @@ int upload_file(File file, const bool is_syslog) {
 
         Serial.print("Uploading: ");
         while (file.available()) {
-            /*
-            char this_line[LINE_LENGTH*2+1];
-            file.read(this_line, LINE_LENGTH*2+1);
-            Serial.print("this_line: ");
-            Serial.print(this_line);
-            Serial.println();
-            httpclient.print(this_line);
-            //client.print('\n');
-            */
+
             auto line = file.readStringUntil('\n');
+
+            if (client.connected()) {
+                if (DEBUG) Serial.print('.');
+            }
+            else {
+                if (DEBUG) Serial.print('!');
+                if (DEBUG) Serial.println();
+                syslog("Wifi disconnect mid upload.");
+                return WL_CONNECT_FAILED;
+            }
+
+            delay(100);
             httpclient.print(line);
             httpclient.print('\n'); // Cannot use .println() as this outputs \r\n (in the HTTP spec)
                                     // and we only want \n as a line ending here
@@ -946,14 +954,7 @@ int upload_file(File file, const bool is_syslog) {
             // fileSizeCount = fileSizeCount + LINE_LENGTH*2+1;
             fileSizeCount += line.length() + 1;
 
-            if (client.connected()) {
-                if (DEBUG) Serial.print('.');
-            }
-            else {
-                if (DEBUG) Serial.print('!');
-                syslog("Wifi disconnect mid upload.");
-                return WL_CONNECT_FAILED;
-            }
+            /*
 
             i--;
 
@@ -969,10 +970,11 @@ int upload_file(File file, const bool is_syslog) {
                 if (green > 255) green = 255;
                 if (green < 0) green = 0;
             }
-            delay(100);
+            */
+            //delay(100);
         }
         httpclient.endRequest();
-        Serial.println();
+        if (DEBUG) Serial.println();
 
         syslog("Number of Bytes Uploaded: %d", fileSizeCount);
 
@@ -981,9 +983,12 @@ int upload_file(File file, const bool is_syslog) {
 
         String httpresponse = httpclient.responseBody();
 
+        /*
         analogWrite(LED_PIN_R, 0);
         analogWrite(LED_PIN_G, 0);
         analogWrite(LED_PIN_B, 0);
+        */
+
 
         Serial.print("Response: ");
         Serial.println(httpresponse);
