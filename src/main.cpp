@@ -32,7 +32,13 @@
 // WiFi and HTTP
 #include <ArduinoHttpClient.h>
 #include <WiFiNINA.h>
+
+#if PORTNUM==443
 WiFiSSLClient client;
+#else
+WiFiClient client;
+#endif
+
 int wifi_status = WL_IDLE_STATUS;
 
 // ****************************************************************************
@@ -141,6 +147,7 @@ char discovered_wifi_pass[65];
 // ****************************************************************************
 
 void setup() {
+
     syslog("Starting up");
     setup_teensy();
     delay_with_rainbow_LED(5000); // Let things settle
@@ -859,7 +866,7 @@ int upload_file(File file, const bool is_syslog) {
 
 
     // now recreating the HttpClient Object for each upload.
-    HttpClient httpclient = HttpClient(client, HTTPS_SERVER, 443);
+    HttpClient httpclient = HttpClient(client, HTTPS_SERVER, PORTNUM);
 
     if (DEBUG) Serial.println("Debug - Starting file upload");
     // we are now going to upload to James's server, using SSL of all things
@@ -888,7 +895,6 @@ int upload_file(File file, const bool is_syslog) {
         analogWrite(LED_PIN_B, 0);
 
         // we are going to change the way we do the LEDs
-        int NumOfLines = (fileSize / LINE_LENGTH);
 
         httpclient.beginRequest();
 
@@ -920,9 +926,8 @@ int upload_file(File file, const bool is_syslog) {
         httpclient.beginBody();
 
         int fileSizeCount = 0;
-        int lineCount = 0;
 
-        Serial.print("Uploading: ");
+        if (DEBUG) Serial.print("Uploading: ");
         while (file.available()) {
 
             auto line = file.readStringUntil('\n');
@@ -946,33 +951,24 @@ int upload_file(File file, const bool is_syslog) {
             // fileSizeCount = fileSizeCount + LINE_LENGTH*2+1;
             fileSizeCount += line.length() + 1;
 
-            /*
-            lineCount += 1;
+            int greenVal = fileSizeCount * 255 / fileSize;
+            int redVal = 255 - greenVal;
 
-            int redVal = lineCount * 255 / NumOfLines;
-            int greenVal = 255 - redVal;
+            if (DEBUG) {
+                Serial.print("fileSizeCount: ");
+                Serial.print(fileSizeCount);
+                Serial.print(" (of ");
+                Serial.print(fileSize);
+                Serial.println(")");
+                Serial.print("greenVal: ");
+                Serial.println(greenVal);
+                Serial.print("redVal: ");
+                Serial.println(redVal);
+                Serial.println();
+            }
 
             analogWrite(LED_PIN_R, redVal);
             analogWrite(LED_PIN_G, greenVal);
-            */
-            /*
-
-            i--;
-
-            if (i <= 0) {
-                //Serial.print(".");
-                analogWrite(LED_PIN_R, red--);
-                analogWrite(LED_PIN_G, green++);
-
-                i = ledStep;
-
-                if (red > 255) red = 255;
-                if (red < 0) red = 0;
-                if (green > 255) green = 255;
-                if (green < 0) green = 0;
-            }
-            */
-            //delay(100);
         }
         httpclient.endRequest();
         if (DEBUG) Serial.println();
@@ -991,8 +987,11 @@ int upload_file(File file, const bool is_syslog) {
         */
 
 
-        Serial.print("Response: ");
-        Serial.println(httpresponse);
+        if (DEBUG) {
+            Serial.print("Response: ");
+            Serial.println(httpresponse);
+        }
+
 
         if (DEBUG) Serial.println("Ending WiFi connection");
         WiFi.end();
@@ -1001,11 +1000,13 @@ int upload_file(File file, const bool is_syslog) {
         if (DEBUG) Serial.println(statusCode);
 
         if (statusCode == 200) {
+            syslog("Upload SUCCESSFUL with responce code: %d", statusCode);
             if (DEBUG) Serial.println("Debug - Response code 200");
             //syslog("Upload successful, status code: %s", String(statusCode));
             //flash_status_LED(255, 0, 255, true, 3);
             return 0;
         } else {
+            syslog("Upload FAILED with responce code: %d", statusCode);
             if (DEBUG) Serial.println("Debug - Response code not 200");
             // some status code was recieved that means it didn't work.
             //syslog("ERROR, upload failed with status code: %s", String(statusCode));
@@ -1020,9 +1021,10 @@ int upload_file(File file, const bool is_syslog) {
 // rather than deleting a file after up load we are going to move the file
 // into an archive folder
 bool archive_file(File file) {
+    setup_SD_card();
     // check to see if the archive dir exisits.
     if (DEBUG) Serial.println("Debug - In file archive");
-    if (!SD.exists(ARCHIVE_FOLDER)) {
+    if (!SD.exists("archive")) {
         if (DEBUG) Serial.println("Debug - Going to make archive folder");
         SD.mkdir(ARCHIVE_FOLDER);
     }
@@ -1082,20 +1084,11 @@ bool archive_file(File file) {
     if (DEBUG) Serial.println("Debug - finding the lenght of the file");
     unsigned long fileSize = file.size();
 
-    int blue = 255;
-    int green = 0;
-
     analogWrite(LED_PIN_R, 0);
-    analogWrite(LED_PIN_G, green);
-    analogWrite(LED_PIN_B, blue);
+    analogWrite(LED_PIN_G, 0);
+    analogWrite(LED_PIN_B, 255);
 
-    int ledStep = (fileSize / ((LINE_LENGTH * 2) + 1)) / 255;
-
-    if (ledStep == 0) {
-        ledStep = 1;
-    }
-
-    int i = ledStep;
+    int fileSizeCount = 0;
 
     while (file.available()) {
         // this is where we actually copy acoss.
@@ -1103,18 +1096,27 @@ bool archive_file(File file) {
         file.read(this_line, ((LINE_LENGTH * 2) + 1));
         archiveFile.write(this_line, ((LINE_LENGTH * 2) + 1));
 
-        i--;
+        fileSizeCount += (LINE_LENGTH * 2) + 1;
 
-        if (i <= 0) {
-            analogWrite(LED_PIN_B, blue--);
-            analogWrite(LED_PIN_G, green++);
-            i = ledStep;
+        int greenVal = fileSizeCount * 255 /fileSize;
+        int blueVal = 255 - greenVal;
 
-            if (blue > 255) blue = 255;
-            if (blue < 0) blue = 0;
-            if (green > 255) green = 255;
-            if (green < 0) green = 0;
+        if (DEBUG) {
+            Serial.print("fileSizeCount: ");
+            Serial.print(fileSizeCount);
+            Serial.print(" (of ");
+            Serial.print(fileSize);
+            Serial.println(")");
+            Serial.print("greenVal: ");
+            Serial.println(greenVal);
+            Serial.print("blueVal: ");
+            Serial.println(blueVal);
+            Serial.println();
         }
+
+        analogWrite(LED_PIN_B, blueVal);
+        analogWrite(LED_PIN_G, greenVal);
+
     }
 
     archiveFile.flush();
