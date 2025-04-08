@@ -98,6 +98,9 @@ float latest_FFT_data[40];
 File datalog_file;
 File syslog_file;
 
+// trying a different SD crd libary to see if that stops the funny behaviour
+//#include "SdFat.h"
+
 // ****************************************************************************
 
 // Other Arduino pins
@@ -124,6 +127,14 @@ Speck speck;
 // Data types
 #include <ArduinoJson.h>
 #include <Dictionary.h>
+
+// ****************************************************************************
+
+// Global Variable to Store the WiFi credentials.
+// these will only be set once a the wifiSetUp function has successfully found 
+// a wifi network that is in our list (the list is stored in secrets.h)
+char discovered_wifi_ssid[33];
+char discovered_wifi_pass[65];
 
 // ****************************************************************************
 // Setup - prepare sensors and log files
@@ -356,7 +367,7 @@ void loop() {
 
     // Only check for Wi-Fi at the start of each minute on the clock (new seconds < old seconds)
     if (GPS.seconds < last_seconds) {
-        if (wifiSetUp() == WL_CONNECTED) {
+        if (wifiSetUp() == true) {
             // Disable the FFT to see if this stops some of the funny behaviour
             AudioNoInterrupts();
 
@@ -389,6 +400,15 @@ void loop() {
                     continue;
                 }
 
+                // check to see if the file is a hidden file, i.e. starts with a '.'
+                // and if it is then don't try and upload it.
+                char filename[40];
+                strcpy(filename, file.name()); // keep file.name() as it is empty after close()
+                if (filename[0] == '.') {
+                    if (DEBUG) Serial.println("Debug - hidden file found, skipping");
+                    continue;
+                }
+
                 num_files++;
             }
             root_dir.close();
@@ -415,7 +435,14 @@ void loop() {
                     continue;
                 }
 
-                if (upload_file(file)) {
+                // check to see if the file is a hidden file, i.e. starts with a '.'
+                // and if it is then don't try and upload it.
+                if (filename[0] == '.') {
+                    continue;
+                }
+
+                if (upload_file(file) == 0) {
+                    if (DEBUG) Serial.println("Debug - Out of the file upload, about to archive");
                     // and since we don't yet have a good way of checking that the upload
                     // has worked we are going instead to try and copy to an archive folder
                     // on the SD card.
@@ -438,6 +465,8 @@ void loop() {
                         syslog("Warning - could not copy %s", filename);
                     }
                 }
+
+                if (DEBUG) Serial.println("Debug - Out of the file upload, about to archive");
 
                 file.close();
             }
@@ -688,7 +717,7 @@ void syslog(const char *message, Args... arguments) {
 }
 
 // a function to set up the WiFi
-int wifiSetUp() {
+bool wifiSetUp() {
     // create the WiFi dict from the json string
     // if we add more than 10 networks then we will need update the number in the below
     // declaration
@@ -701,8 +730,8 @@ int wifiSetUp() {
     int numSsid = WiFi.scanNetworks();
     // check through the list of WiFi networks to see if any are in our known list
     for (int thisNet = 0; thisNet < numSsid; thisNet++) {
-        char ssid[20];
-        char pass[20];
+        char ssid[33];
+        char pass[65];
 
         String ssid_s = WiFi.SSID(thisNet);
         strcpy(ssid, WiFi.SSID(thisNet));
@@ -712,37 +741,71 @@ int wifiSetUp() {
 
         if (wifiNetworks(ssid)) {
             syslog("%d networks found, including %s trying to connect.", numSsid, ssid);
-
-            // try and connect to the matching network we have found
-            // we are going to stop after a given number of attempts,
-            // otherwise we might get stuck in this loop forever if the wifi networks
-            // disappears.
-            int i = WIFI_ATTEMPTS;
-            do {
-                i = i - 1;
-                flash_status_LED(255, 255, 255, false, 1);
-                // try to connect
-                wifi_status = WiFi.begin(ssid, pass);
-            } while ((wifi_status != WL_CONNECTED) && (i > 1));
-
-            if (wifi_status == WL_CONNECTED) {
-                syslog("WiFi Connected");
-                flash_status_LED(255, 255, 255, true, 3);
-                // print the status to the log
-                if (DEBUG) Serial.println("Debug - about to print wifi status");
-                printWifiStatus();
-                if (DEBUG) Serial.println("Debug - printed wifi status");
-                return WL_CONNECTED;
-            } else {
-                syslog("WiFi could not connect, aborting connection");
-                flash_status_LED(255, 255, 255, false, 3);
-                return WL_CONNECTED;
-            }
+            // we are not going to pass the ssid and password to the wifiConnect function
+            // because instead these are now stored global variables.
+            // actually, we're going to have to change this so that it simply 
+            // reports if a known network has been found, and then we wait until the 
+            // file upload to connect.
+            
+            // copy the ssid that we found that is in the list, and the password, to
+            // the global variables.
+            strncpy(discovered_wifi_ssid, ssid, 33);
+            strncpy(discovered_wifi_pass, pass, 65);
+            //wifiConnect();
+            // this is being changed to return a bool, true if network found, false otherwise.
+            return true;
         }
     }
     // if there was no network to connect to then we flash a fetching pink
     flash_status_LED(255, 150, 150, false, 1);
-    return 0;
+    return false;
+}
+
+// We are chnaging things so that the wifi connection is done in a seperate function
+// it will look in the global variables discovered_wifi_ssid and discovered_wifi_pass to
+// find which netowrks it should connect to.
+// this has been done so that it can more quickly disconnect and reconnet the wifi
+// between file uplaods, which has been found to help uplaod success rate.
+int wifiConnect() {
+    // try and connect to the matching network we have found
+    // we are going to stop after a given number of attempts,
+    // otherwise we might get stuck in this loop forever if the wifi networks
+    // disappears.
+
+    if (DEBUG)
+    {
+        Serial.print("ssid: ");
+        Serial.println(discovered_wifi_ssid);
+    }
+    
+
+    int i = WIFI_ATTEMPTS;
+    do {
+        delay(1000);
+        i = i - 1;
+        flash_status_LED(255, 255, 255, false, 1);
+        // try to connect
+        if (DEBUG)
+        {
+            Serial.println("Debug - trying to connect to wifi");
+        }
+        
+        wifi_status = WiFi.begin(discovered_wifi_ssid, discovered_wifi_pass);
+    } while ((wifi_status != WL_CONNECTED) && (i > 1));
+
+    if (wifi_status == WL_CONNECTED) {
+        syslog("WiFi Connected");
+        flash_status_LED(255, 255, 255, true, 3);
+        // print the status to the log
+        if (DEBUG) Serial.println("Debug - about to print wifi status");
+        printWifiStatus();
+        if (DEBUG) Serial.println("Debug - printed wifi status");
+        return WL_CONNECTED;
+    } else {
+        syslog("WiFi could not connect, aborting connection");
+        flash_status_LED(255, 255, 255, false, 3);
+        return wifi_status;
+    }
 }
 
 // Switch the Teensy off (or restart it when debugging)
@@ -792,8 +855,13 @@ String IpAddress2String(const IPAddress &ipAddress) {
 }
 
 // a function for uploading the data file to the server
-bool upload_file(File file, const bool is_syslog) {
+int upload_file(File file, const bool is_syslog) {
+    if (DEBUG) Serial.println("Debug - Starting file upload");
     // we are now going to upload to James's server, using SSL of all things
+
+    if (wifiConnect() != WL_CONNECTED) {
+        return WL_CONNECT_FAILED;
+    }
 
     char file_size_string[7];
     itoa(file.size(), file_size_string, 10);
@@ -878,10 +946,19 @@ bool upload_file(File file, const bool is_syslog) {
             // fileSizeCount = fileSizeCount + LINE_LENGTH*2+1;
             fileSizeCount += line.length() + 1;
 
+            if (client.connected()) {
+                if (DEBUG) Serial.print('.');
+            }
+            else {
+                if (DEBUG) Serial.print('!');
+                syslog("Wifi disconnect mid upload.");
+                return WL_CONNECT_FAILED;
+            }
+
             i--;
 
             if (i <= 0) {
-                Serial.print(".");
+                //Serial.print(".");
                 analogWrite(LED_PIN_R, red--);
                 analogWrite(LED_PIN_G, green++);
 
@@ -892,6 +969,7 @@ bool upload_file(File file, const bool is_syslog) {
                 if (green > 255) green = 255;
                 if (green < 0) green = 0;
             }
+            delay(100);
         }
         httpclient.endRequest();
         Serial.println();
@@ -910,15 +988,25 @@ bool upload_file(File file, const bool is_syslog) {
         Serial.print("Response: ");
         Serial.println(httpresponse);
 
+        if (DEBUG) Serial.println("Ending WiFi connection");
+        WiFi.end();
+
+        if (DEBUG) Serial.print("Debug - Response code: ");
+        if (DEBUG) Serial.println(statusCode);
+
         if (statusCode == 200) {
-            syslog("Upload successful, status code: %d", statusCode);
-            flash_status_LED(255, 0, 255, true, 3);
-            return true;
+            if (DEBUG) Serial.println("Debug - Response code 200");
+            //syslog("Upload successful, status code: %s", String(statusCode));
+            //flash_status_LED(255, 0, 255, true, 3);
+            return 0;
         } else {
+            if (DEBUG) Serial.println("Debug - Response code not 200");
             // some status code was recieved that means it didn't work.
-            syslog("ERROR, upload failed with status code: %d", statusCode);
-            flash_status_LED(255, 0, 255, false, 3);
-            return false;
+            //syslog("ERROR, upload failed with status code: %s", String(statusCode));
+            // check to see if we make it this far
+            if (DEBUG) Serial.println("Debug - Response code not 200");
+            //flash_status_LED(255, 0, 255, false, 3);
+            return 1;
         }
     }
 }
@@ -927,17 +1015,30 @@ bool upload_file(File file, const bool is_syslog) {
 // into an archive folder
 bool archive_file(File file) {
     // check to see if the archive dir exisits.
+    if (DEBUG) Serial.println("Debug - In file archive");
     if (!SD.exists(ARCHIVE_FOLDER)) {
+        if (DEBUG) Serial.println("Debug - Going to make archive folder");
         SD.mkdir(ARCHIVE_FOLDER);
     }
     // first we are going to create the archive file in the archive dir
     char archiveFileName[40];
+    if (DEBUG) Serial.println("Debug - creatinged archive file name");
     strcpy(archiveFileName, ARCHIVE_FOLDER);
     strcat(archiveFileName, "/");
     strcat(archiveFileName, file.name());
 
+    if (DEBUG) Serial.println("Debug - created archive file name");
+    if (DEBUG) Serial.print("Debug - archive file name: ");
+    if (DEBUG) Serial.println(archiveFileName);
+
+    bool archive_exists = SD.exists(archiveFileName);
+
+    if (DEBUG) Serial.print("Debug - archive file name already exists: ");
+    if (DEBUG) Serial.println(archive_exists);
+
     // check to see if this archive file already exists,
     while (SD.exists(archiveFileName)) {
+        if (DEBUG) Serial.println("Debug - found that archive file name already exisits");
         syslog("Warning - %s already exists, trying different name.", archiveFileName);
 
         // if it does exist then we are going to prepend a "random" number,
@@ -949,12 +1050,16 @@ bool archive_file(File file) {
         strcat(archiveFileName, rand_s);
         strcat(archiveFileName, "_");
         strcat(archiveFileName, file.name());
+        if (DEBUG) Serial.println("Debug - made a new archive file name");
     }
 
     // if we've managed to make a file that doesn't already exist then
     // we will open it, and start the upload process
+    if (DEBUG) Serial.println("Debug - creating the archive file variable");
     File archiveFile;
+    if (DEBUG) Serial.println("Debug - just about the funny string line");
     String archiveFileName_s(archiveFileName);
+    if (DEBUG) Serial.println("Debug - opening the archive file");
     archiveFile = SD.open(archiveFileName_s.c_str(), FILE_WRITE);
 
     if (archiveFile) {
@@ -964,9 +1069,11 @@ bool archive_file(File file) {
     }
 
     // more the begining of the original file
+    if (DEBUG) Serial.println("Debug - Going to the beginning of the file.");
     file.seek(0);
 
     // we are going to do the same LED fading, but from blue to green
+    if (DEBUG) Serial.println("Debug - finding the lenght of the file");
     unsigned long fileSize = file.size();
 
     int blue = 255;

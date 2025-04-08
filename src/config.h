@@ -3,7 +3,8 @@
  */
 
 // Upload Server details
-#define HTTPS_SERVER "london.localair.uk"
+//#define HTTPS_SERVER "london.localair.uk"
+#define HTTPS_SERVER "debug.localair.uk"
 
 /*
  * System log file name:
@@ -32,10 +33,10 @@
 #define ACCEL_TRIG_SENSE 0x50
 
 /* Debugging flags */
-#define DEBUG false     // this turns on and off debug logging
+#define DEBUG true     // this turns on and off debug logging
 #define DEBUG_FFT false // Output live FFT data to the serial console
-#define CHECK_GPS_DATETIME true
-#define AUTO_POWER_OFF true
+#define CHECK_GPS_DATETIME false
+#define AUTO_POWER_OFF false
 #define INACTIVITY_TIMEOUT 5
 #define WIFI_ATTEMPTS 5
 // #define LOG_FILE_NAME_PREFIX "LocalAirData_"

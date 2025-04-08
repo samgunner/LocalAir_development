@@ -75,7 +75,7 @@ void delay_with_rainbow_LED(unsigned int dur);
 void flash_status_LED(const int red = 255, const int green = 255, const int blue = 255, const bool status = STATUS_SUCCESS, const int times = 1);
 
 // TODO: doc
-int wifiSetUp();
+bool wifiSetUp();
 
 // TODO: doc
 void power_off();
@@ -84,7 +84,10 @@ void power_off();
 void printWifiStatus();
 
 // TODO: doc
-bool upload_file(File file, const bool is_syslog = false);
+int upload_file(File file, const bool is_syslog = false);
+
+// TODO: doc
+int wifiConnect();
 
 // TODO: doc
 bool archive_file(File file);
