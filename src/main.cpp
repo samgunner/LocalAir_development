@@ -883,19 +883,12 @@ int upload_file(File file, const bool is_syslog) {
     if (true) {
         unsigned long fileSize = file.size();
 
-        int red = 255;
-        int green = 0;
-
-        analogWrite(LED_PIN_R, red);
-        analogWrite(LED_PIN_G, green);
+        analogWrite(LED_PIN_R, 255);
+        analogWrite(LED_PIN_G, 0);
         analogWrite(LED_PIN_B, 0);
 
-        // this should be the number  of lines divided by 255
-        int ledStep = (fileSize / LINE_LENGTH) / 255;
-
-        if (ledStep == 0) {
-            ledStep = 1;
-        }
+        // we are going to change the way we do the LEDs
+        int NumOfLines = (fileSize / LINE_LENGTH);
 
         httpclient.beginRequest();
 
@@ -926,9 +919,8 @@ int upload_file(File file, const bool is_syslog) {
 
         httpclient.beginBody();
 
-        int i = ledStep;
-
         int fileSizeCount = 0;
+        int lineCount = 0;
 
         Serial.print("Uploading: ");
         while (file.available()) {
@@ -954,6 +946,15 @@ int upload_file(File file, const bool is_syslog) {
             // fileSizeCount = fileSizeCount + LINE_LENGTH*2+1;
             fileSizeCount += line.length() + 1;
 
+            /*
+            lineCount += 1;
+
+            int redVal = lineCount * 255 / NumOfLines;
+            int greenVal = 255 - redVal;
+
+            analogWrite(LED_PIN_R, redVal);
+            analogWrite(LED_PIN_G, greenVal);
+            */
             /*
 
             i--;
